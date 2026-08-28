@@ -1,0 +1,5 @@
+# Outils internes de développement — pas destinés au dépôt public
+.claude/
+docs/tickets/
+handoff.md
+.docs/
