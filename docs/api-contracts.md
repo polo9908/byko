@@ -196,9 +196,17 @@ ticket BACK-4). Déclenché automatiquement au blur du champ jeton, sans bouton 
 
 | `block` | `credentials` |
 | --- | --- |
-| `"jira"` | `{ instanceUrl, apiToken }` |
+| `"jira"` | `{ instanceUrl, email, apiToken }` |
 | `"figma"` | `{ apiToken }` |
 | `"ai"` | `{ provider: ProviderId, apiToken }` |
+
+**`email` ajouté au bloc Jira le 04/09/2026, pendant BACK-1.** Un jeton API Jira **Cloud**
+classique s'authentifie en Basic auth (`base64(email:jeton)`), pas en
+`Authorization: Bearer <jeton>` seul — réservé aux jetons OAuth 2.0 (3LO) ou aux Personal
+Access Tokens Data Center. Sondes réelles sans jeton sur `ecosystem.atlassian.net`
+(`lib/jira-connection.ts`) : `Bearer` invalide → 403, `Basic` invalide → 401 (comportement
+standard). Impact : FRONT-2 doit prévoir un champ e-mail dans le bloc Jira, en plus de
+l'URL d'instance et du jeton.
 
 Pour typer un bloc précis : `TestConnectionRequestFor<"jira">`.
 
@@ -266,7 +274,7 @@ lecture sur « aucune configuration ».**
 
 | Bloc | Statuts possibles | Charge utile quand `connected` | Charge utile quand `not_connected` |
 | --- | --- | --- | --- |
-| `jira` | `connected`, `not_connected` | `instanceUrl`, `account.accountName` | `lastError?` |
+| `jira` | `connected`, `not_connected` | `instanceUrl`, `email`, `account.accountName` | `lastError?` |
 | `figma` | `connected`, `not_connected`, `skipped` | `account?` (optionnel) | `lastError?` |
 | `ai` | `connected`, `not_connected` | `provider: ProviderId` | `lastError?` |
 

@@ -69,9 +69,19 @@ export type ConnectionBlockId = "jira" | "figma" | "ai";
 /* des réponses est une obligation d'implémentation, pas un acquis du typage. */
 /* -------------------------------------------------------------------------- */
 
-/** Bloc Jira : URL d'instance + jeton API (FRONT-2, BACK-1). */
+/**
+ * Bloc Jira : URL d'instance + email + jeton API (FRONT-2, BACK-1).
+ *
+ * `email` ajouté le 04/09/2026, après implémentation de BACK-1 : un jeton API Jira
+ * **Cloud** classique s'authentifie en Basic auth (`base64(email + ":" + jeton)`), pas en
+ * `Authorization: Bearer <jeton>` seul (réservé aux jetons OAuth 2.0 / PAT Data Center).
+ * Sans `email`, le Basic auth n'est pas représentable et BACK-1 devait envoyer un `Bearer`
+ * dont les sondes réelles (`lib/jira-connection.ts`) montrent qu'il n'est probablement pas
+ * le canal attendu par un jeton Cloud standard. Voir `docs/api-contracts.md`.
+ */
 export interface JiraCredentials {
   instanceUrl: string;
+  email: string;
   apiToken: string;
 }
 
@@ -297,6 +307,10 @@ export interface PersistedConnectionError<TCode extends string> {
  *
  * - `instanceUrl` : FRONT-2 ligne 221 (« champ URL instance ») doit être pré-rempli au
  *   retour sur l'écran, et FRONT-5 ligne 288 affiche « nom de l'instance Jira ».
+ * - `email` : ajouté le 04/09/2026 en même temps que sur `JiraCredentials` — sans lui,
+ *   FRONT-2 ne peut pas pré-remplir ce champ au retour sur l'écran (même motif que pour
+ *   `instanceUrl`), et un test au blur sur le champ jeton échouerait à tort en « renseigne
+ *   ton e-mail » sur une connexion pourtant déjà valide.
  * - `account` : BACK-1 ligne 113 (« succès avec nom du compte/instance ») et FRONT-12
  *   ligne 67 (résumé du bloc replié). Même forme que le succès de test, c'est la même
  *   information, simplement rendue durable par BACK-4.
@@ -316,7 +330,12 @@ export interface PersistedConnectionError<TCode extends string> {
  * posée en en-tête de ce fichier (BACK-1/2/3) et à l'obligation de persistance (BACK-4).
  */
 export type JiraSettingsState =
-  | { status: "connected"; instanceUrl: string; account: JiraAccountInfo }
+  | {
+      status: "connected";
+      instanceUrl: string;
+      email: string;
+      account: JiraAccountInfo;
+    }
   | {
       status: "not_connected";
       lastError?: PersistedConnectionError<JiraTestConnectionErrorCode>;
