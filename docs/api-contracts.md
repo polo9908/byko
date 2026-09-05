@@ -400,6 +400,61 @@ réponse à faire écho au bon bloc — c'est une discipline d'implémentation �
 BACK-4. Ce choix évite d'exporter un helper générique qu'aucun ticket ne demande ; il est
 réversible en quelques lignes si le besoin se confirme.
 
+### Un test raté ne dégrade pas un bloc déjà `connected` (acté le 05/09/2026)
+
+Ajouté après l'audit QA de BACK-4 du 04/09/2026, qui avait relevé comme **bloquant** que la
+première implémentation détruisait sans récupération possible le jeton d'une connexion qui
+fonctionnait, dès le premier test raté suivant — à rebours de l'US du ticket (« ne pas avoir à
+ressaisir mes jetons »). Le comportement retenu, et le contrat qui en découle :
+
+**Si le bloc visé est déjà `connected` dans le coffre et que le test rejoué échoue**, l'état
+persisté n'est pas modifié. Le bloc est conservé tel quel : jeton, nom de compte,
+`instanceUrl`, `email`, `provider` — inchangés. Ne sont écrits nulle part, pas même chiffrés :
+
+- les credentials soumises et refusées par le provider ;
+- le `lastError` du test raté ;
+- les autres valeurs soumises dans la même requête (une nouvelle `instanceUrl` ou un nouvel
+  `email` accompagnant un jeton refusé sont ignorés — le bloc est conservé **en entier**).
+
+La réponse HTTP, elle, porte bien `{ block, status: "error", message }`. Le `message` vient
+soit du test de connexion raté, soit — si l'écriture du coffre elle-même échoue (clé de
+chiffrement disparue, coffre illisible) — du message d'erreur du magasin. Dans ce second cas,
+quel que soit l'état de départ du bloc, rien n'est persisté : l'état enregistré reste celui
+d'avant la requête.
+
+Quand le message vient du test raté (l'écriture du coffre, elle, a réussi), la persistance
+dépend de l'état de départ, pas seulement de `status: "error"` : **si le bloc visé était déjà
+`connected`, l'état persisté n'a pas changé** (il est conservé, voir plus haut) — le coffre a
+réécrit la même valeur, la sauvegarde demandée n'a pas eu lieu. **Si le bloc visé n'était
+pas `connected`, l'état persisté passe à `not_connected` avec son `lastError`** : la
+sauvegarde a bien eu lieu. `status: "error"` seul ne dit donc jamais, à lui seul, si quelque
+chose a été écrit — il faut connaître l'état de départ du bloc et l'origine du message pour
+le savoir.
+
+Les deux autres cas sont inchangés : un test réussi écrase l'état précédent ; un bloc qui
+n'était pas déjà `connected` est bien dégradé en `not_connected` avec son `lastError`. Figma
+`skipped` n'est pas un test raté mais une action explicite de l'utilisateur : il écrase l'état
+précédent, `connected` compris, et le jeton précédemment validé disparaît du coffre avec lui.
+
+**Ce que le front doit en faire (FRONT-2, FRONT-3, FRONT-12).** La réponse du `POST` et le
+`GET` suivant divergent volontairement sur ce cas : le `POST` dit `error`, le `GET` dit
+`connected`. Le front ne doit pas déduire l'état persisté d'un bloc de la seule réponse du
+`POST`. La réponse du `POST` rend compte de **la tentative en cours** (à afficher comme telle,
+message du provider à l'appui) ; `GET /api/settings` reste la seule source de l'état
+enregistré. Un écran qui recopierait `status: "error"` dans l'état du bloc afficherait « non
+connecté » là où le rechargement suivant dira « connecté ».
+
+**Point non arbitré, à trancher avec le design.** Après rechargement de page, rien n'indique
+que le dernier test a échoué : `GET /api/settings` rend le bloc `connected` sans `lastError`
+(le contrat ne rend pas cette forme représentable — voir §« Cause du dernier échec,
+persistée »). L'utilisateur qui a régénéré son jeton côté provider et saisi le nouveau avec une
+faute verra « connecté » au rechargement, alors que le jeton stocké est l'ancien — qui, lui,
+ne fonctionne plus côté provider. Le comportement actuel est défendable (`connected` = « validé
+au moins une fois »), et il est en tout cas préférable à la destruction qu'il corrige, mais il
+n'a été arbitré par aucun ticket. Si l'on veut que cet échec reste visible après rechargement,
+il faudra rendre représentable un `lastError` sur un bloc `connected`, ce qui est une
+modification du contrat et non de BACK-4 seul.
+
 ## Décisions actées le 31/08/2026 (ex-« Questions ouvertes »)
 
 Les 7 questions laissées ouvertes par ARCHI-2 le 29/08/2026 ont été tranchées le 31/08/2026
