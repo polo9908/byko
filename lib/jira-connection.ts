@@ -282,8 +282,14 @@ function checkEmail(rawEmail: string): { valid: true; email: string } | { valid:
 /**
  * Seul endroit du projet où le jeton Jira est mis en forme pour le réseau.
  * Basic auth `base64(email:jeton)` — mode retenu le 04/09/2026, voir l'en-tête du fichier.
+ *
+ * Exporté pour `lib/jira-scope.ts` (BACK-5), qui lit la connexion persistée par BACK-4 et
+ * construit le même en-tête sans recopier le format : une seule source de vérité pour la
+ * forme exacte sur le fil. La fonction reste pure (elle reçoit email + jeton en clair) :
+ * c'est l'appelant qui décide où révéler le `Secret` — `lib/jira-scope.ts` le fait en un
+ * seul endroit nommé, relu par l'audit (`grep revealSecret`).
  */
-function buildAuthorizationHeader(email: string, token: string): string {
+export function buildAuthorizationHeader(email: string, token: string): string {
   return `Basic ${Buffer.from(`${email}:${token}`, "utf-8").toString("base64")}`;
 }
 
