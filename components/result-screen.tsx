@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { ComponentsSection } from "@/components/components-section";
 import type {
   AnalysisStreamEvent,
   ComparisonWindow,
@@ -9,6 +10,7 @@ import type {
 } from "@/lib/types/analysis";
 import type { AnalysisHistoryResponse } from "@/lib/types/analysis";
 import {
+  manualScopeIsNone,
   VERDICT_HINTS,
   VERDICT_LABELS,
   VERDICT_THEMES,
@@ -16,13 +18,19 @@ import {
 import styles from "./result-screen.module.css";
 
 /**
- * FRONT-9 — écran de résultat (verdict, clarification, traduction), en streaming.
+ * FRONT-9/FRONT-10 — écran de résultat (verdict, clarification, traduction, composants),
+ * en streaming.
  *
  * Reçoit le flux `POST /api/analysis` (ARCHI-4) et affiche chaque section DÈS son arrivée,
- * dans l'ordre verdict → clarification → traduction — pas d'attente bloquante avant le
- * premier affichage (critère d'acceptation). Badge de verdict compact (3 couleurs) + icône
- * « ? » avec infobulle CSS (survol). Le badge « Mis à jour » n'apparaît que si `staleSince`
- * est renvoyé par `GET /api/analysis/history` (BACK-9).
+ * dans l'ordre verdict → clarification → traduction → composants — pas d'attente bloquante
+ * avant le premier affichage (critère d'acceptation). Badge de verdict compact (3 couleurs)
+ * + icône « ? » avec infobulle CSS (survol). Le badge « Mis à jour » n'apparaît que si
+ * `staleSince` est renvoyé par `GET /api/analysis/history` (BACK-9).
+ *
+ * Section composants (FRONT-10) : montée quand l'événement `components` (BACK-8) arrive.
+ * Un événement `error` terminal rend le résultat non valide : la section ne s'affiche pas
+ * avec des données partielles (le backend n'émet jamais `components` puis `error`, mais
+ * l'ordre du flux n'est pas encodé dans le type — garde défensive).
  *
  * « Poster en commentaire Jira » : l'endpoint d'écriture n'existe pas encore — l'action
  * échoue proprement avec un message clair (critère : échec propre si le scope d'écriture
@@ -44,10 +52,13 @@ export function ResultScreen({
   request,
   windowLabel,
   onBack,
+  onOpenSettings,
 }: {
   request: ResultRequest;
   windowLabel: string;
   onBack: () => void;
+  /** Ouvre la modale Paramètres (FRONT-11/12) — canal du message « Connecte Figma ». */
+  onOpenSettings: () => void;
 }) {
   const [events, setEvents] = useState<AnalysisStreamEvent[]>([]);
   const [streaming, setStreaming] = useState(true);
@@ -135,9 +146,20 @@ export function ResultScreen({
   const translation = events.find(
     (event): event is Extract<AnalysisStreamEvent, { type: "translation" }> => event.type === "translation",
   );
+  const componentsEvent = events.find(
+    (event): event is Extract<AnalysisStreamEvent, { type: "components" }> => event.type === "components",
+  );
   const errorEvent = events.find(
     (event): event is Extract<AnalysisStreamEvent, { type: "error" }> => event.type === "error",
   );
+
+  /**
+   * Périmètre « none » (BACK-5) dérivable côté front en MODE MANUEL SEUL : champ
+   * « Epic / composant » vide ⇒ `none` (cf. `manualScopeIsNone`). En mode Jira, la méthode
+   * de résolution n'est pas exposée par le contrat : on ne décide rien (aucun message de
+   * périmètre inventé) — candidat avenant BACK-8 (porter `ScopeMethod` dans l'événement).
+   */
+  const scopeNone = request.ticketSource === "manual" && manualScopeIsNone(request.scopeHint);
 
   const copy = async () => {
     if (clarification === undefined) return;
@@ -217,6 +239,15 @@ export function ResultScreen({
           <h2 className={styles.sectionTitle}>Traduction</h2>
           <p className={styles.message}>{translation.text}</p>
         </section>
+      )}
+
+      {componentsEvent !== undefined && errorEvent === undefined && (
+        <ComponentsSection
+          figmaConnected={componentsEvent.figmaConnected}
+          components={componentsEvent.components}
+          scopeNone={scopeNone}
+          onOpenSettings={onOpenSettings}
+        />
       )}
 
       {errorEvent !== undefined && (

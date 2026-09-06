@@ -18,7 +18,7 @@ import styles from "./workspace-screen.module.css";
  * pas changé depuis la dernière analyse (FRONT-8).
  */
 
-export function WorkspaceScreen() {
+export function WorkspaceScreen({ onOpenSettings }: { onOpenSettings: () => void }) {
   const [attempt, setAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [jiraConnected, setJiraConnected] = useState<boolean | null>(null);
@@ -110,6 +110,7 @@ export function WorkspaceScreen() {
           request={run}
           windowLabel={WINDOW_OPTIONS.find((option) => option.value === run.comparisonWindow)?.label ?? ""}
           onBack={() => setRun(null)}
+          onOpenSettings={onOpenSettings}
         />
       </div>
     );

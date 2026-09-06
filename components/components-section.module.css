@@ -1,0 +1,158 @@
+/* FRONT-10 — section composants (cartes 3 états + messages d'état distincts). */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+/* Grille auto-fit : 3 → 1 colonnes selon la largeur, sans media query à maintenir
+   (critère d'acceptation FRONT-10). minmax(176px, 1fr) : jamais de scroll horizontal,
+   les colonnes se replient. */
+.grid {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(176px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* Zone d'aperçu : le contrat BACK-8 ne porte pas de miniature Figma, l'aperçu met en
+   avant la première lettre du nom sur la teinte de l'état (décision documentée FRONT-10). */
+.preview {
+  height: 92px;
+  display: grid;
+  place-items: center;
+}
+
+.previewMark {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border-radius: 14px;
+  font-size: 24px;
+  font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(43, 36, 25, 0.06);
+}
+
+.cardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+}
+
+.cardName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: var(--radius-full);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* Lien Figma : l'URL vient du backend (MCP-3), jamais réécrite. Les ancres globales
+   n'ont pas de soulignement (app/globals.css) — on le rétablit pour la lisibilité. */
+.figmaLink {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.figmaLink:hover {
+  color: var(--accent);
+}
+
+/* Message Figma non connecté — panneau teinté + action vers Paramètres : distinct de
+   l'état vide par son fond orange et son bouton, jamais confondu (critère FRONT-10). */
+.figmaNotice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--accent-soft);
+  border-radius: 12px;
+}
+
+.figmaText {
+  font-size: 14.5px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.settingsLink {
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.settingsLink:hover {
+  color: var(--accent);
+}
+
+/* Message périmètre « none » — panneau discret bordé : distinct de l'état vide (texte
+   nu) et de l'incitation Figma (fond orange + action). */
+.scopeNoneNotice {
+  padding: 12px 14px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+}
+
+/* État vide honnête : aucun composant proposé. Texte nu, aucun panneau. */
+.emptyNotice {
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--ink-muted);
+  padding: 4px 2px;
+}

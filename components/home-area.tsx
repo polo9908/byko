@@ -35,7 +35,7 @@ export function HomeArea() {
       </header>
 
       <div className={styles.workspace}>
-        <WorkspaceScreen />
+        <WorkspaceScreen onOpenSettings={() => setModalOpen(true)} />
       </div>
 
       {modalOpen && <SettingsModal onClose={() => setModalOpen(false)} />}
