@@ -1,24 +1,24 @@
 /**
- * BACK-7 — orchestration de `POST /api/analysis` (verdict → clarification → traduction).
+ * BACK-7/BACK-8 — orchestration de `POST /api/analysis`.
  *
- * Assemble les briques : résolution du périmètre (BACK-5), récupération du ticket et du
- * corpus (injectée), pipeline IA (BACK-7, injection `complete`), puis produit la liste
- * ORDONNÉE des événements du flux (`AnalysisStreamEvent`, ARCHI-4) que la route se
- * contente de sérialiser en SSE. Aucune logique HTTP ici.
+ * Assemble : résolution du périmètre (BACK-5), récupération du ticket et du corpus
+ * (injectée), pipeline IA (BACK-7, injection `complete`), puis l'étage composants (BACK-8,
+ * injection `searchComponents`), et produit la liste ORDONNÉE des événements du flux.
  *
- * Les deux briques non encore vérifiées sont INJECTÉES avec des valeurs par défaut qui
- * lèvent `AnalysisNotWiredError` : ni l'appel de génération IA (aucun endpoint de
- * génération vérifié dans `lib/providers-api.ts`) ni la récupération du contenu de ticket
- * Jira ne sont câblés à ce stade. Le mode manuel, lui, n'a besoin que de `complete`.
+ * Ordre : `verdict` (toujours) → `clarification` (si verdict ≠ `coherent`) → `translation`
+ * (toujours) → `components` (BACK-8, porte `figmaConnected`). Un échec de l'étage composants
+ * est un événement `error` TERMINAL (après la traduction), jamais un `components` falsifié.
  *
- * L'événement `components` n'est PAS émis ici : c'est l'étage BACK-8, qui viendra se
- * brancher après la traduction. L'horodatage et le hash de source produits par le pipeline
- * ne sont pas streamés (le contrat ARCHI-4 ne les porte pas) : ils sont destinés à la
- * persistance de BACK-10, qui les consommera pour BACK-9.
+ * Les briques non encore vérifiées sont INJECTÉES avec des défauts qui lèvent
+ * `AnalysisNotWiredError` : appel de génération IA et récupération du contenu Jira (aucun
+ * endpoint de génération vérifié), et — quand Figma EST connecté — l'appel MCP
+ * `search_design_system` (aucun serveur MCP configuré). Quand Figma n'est PAS connecté, le
+ * défaut de l'étage composants répond honnêtement `figmaConnected: false` sans aucun appel.
  */
 
 import type {
   AnalysisClarificationEvent,
+  AnalysisComponentsEvent,
   AnalysisErrorEvent,
   AnalysisRequest,
   AnalysisStreamEvent,
@@ -32,12 +32,17 @@ import {
   type TicketSnapshot,
 } from "@/lib/analysis-pipeline";
 import { resolveComparisonScope } from "@/lib/jira-scope";
+import type { ComponentSearchOutcome } from "@/lib/component-search";
+import { getSettingsStore } from "@/lib/settings-store";
+import { emptySettingsState, toSettingsState } from "@/lib/settings-mapper";
 
 export interface AnalysisDependencies {
   /** Complétion IA (injectée ; défaut : non câblée). */
   complete: AnalyzerCompletion;
   /** Récupération du contenu d'un ticket Jira par clé (injectée ; défaut : non câblée). */
   fetchTicket: (key: string) => Promise<TicketSnapshot | null>;
+  /** Étage composants (BACK-8) ; défaut : lit l'état Figma réel. */
+  searchComponents?: (needs: readonly string[]) => Promise<ComponentSearchOutcome>;
 }
 
 function notWiredCompletion(): Promise<string> {
@@ -48,21 +53,48 @@ function notWiredTicketFetch(): Promise<TicketSnapshot | null> {
   return Promise.reject(new AnalysisNotWiredError());
 }
 
+/**
+ * Défaut de l'étage composants : lit l'état réel de la connexion Figma (coffre BACK-4).
+ * Non connecté → `figmaConnected: false`, liste vide, AUCUN appel. Connecté → « non
+ * câblé » : le transport MCP `search_design_system` n'existe pas encore dans cet
+ * environnement (aucun serveur MCP), on ne prétend pas chercher.
+ */
+async function defaultComponentSearch(
+  needs: readonly string[],
+): Promise<ComponentSearchOutcome> {
+  const store = getSettingsStore();
+  const result = await store.read();
+  if (result.status === "error") {
+    return { status: "error", message: result.message };
+  }
+  const settings = result.status === "absent" ? emptySettingsState() : toSettingsState(result.value);
+  if (settings.figma.status !== "connected") {
+    return { status: "success", figmaConnected: false, components: [] };
+  }
+  if (needs.length === 0) {
+    return { status: "success", figmaConnected: true, components: [] };
+  }
+  throw new AnalysisNotWiredError();
+}
+
 /** Dépendances de production actuelles : IA et récupération Jira non câblées (documenté). */
 export function defaultAnalysisDependencies(): AnalysisDependencies {
-  return { complete: notWiredCompletion, fetchTicket: notWiredTicketFetch };
+  return {
+    complete: notWiredCompletion,
+    fetchTicket: notWiredTicketFetch,
+    searchComponents: defaultComponentSearch,
+  };
 }
 
 /**
  * Exécute l'analyse et renvoie les événements du flux, DANS l'ordre du contrat.
- *
- * Ordre : `verdict` (toujours) → `clarification` (si verdict ≠ `coherent`) → `translation`
- * (toujours). En cas d'échec, un unique `error` terminal.
  */
 export async function runAnalysis(
   request: AnalysisRequest,
   deps: AnalysisDependencies = defaultAnalysisDependencies(),
 ): Promise<AnalysisStreamEvent[]> {
+  const search = deps.searchComponents ?? defaultComponentSearch;
+
   if (request.ticketSource === "manual") {
     const ticket: TicketSnapshot = {
       key: null,
@@ -71,9 +103,11 @@ export async function runAnalysis(
       updatedAt: null,
     };
     const outcome = await analyzeTicket(ticket, [], deps.complete);
-    return outcome.status === "success"
-      ? toStreamEvents(outcome.result.verdict, outcome.result.clarification, outcome.result.translation)
-      : [toErrorEvent(outcome.message)];
+    if (outcome.status === "error") {
+      return [toErrorEvent(outcome.message)];
+    }
+    const events = toBaseEvents(outcome.result.verdict, outcome.result.clarification, outcome.result.translation);
+    return withComponentsStage(events, outcome.result.needs, search);
   }
 
   // Mode Jira : résolution du périmètre (BACK-5), puis récupération du ticket + corpus.
@@ -118,21 +152,52 @@ export async function runAnalysis(
   }
 
   const outcome = await analyzeTicket(target, corpus, deps.complete);
-  return outcome.status === "success"
-    ? toStreamEvents(outcome.result.verdict, outcome.result.clarification, outcome.result.translation)
-    : [toErrorEvent(outcome.message)];
+  if (outcome.status === "error") {
+    return [toErrorEvent(outcome.message)];
+  }
+  const events = toBaseEvents(outcome.result.verdict, outcome.result.clarification, outcome.result.translation);
+  return withComponentsStage(events, outcome.result.needs, search);
 }
 
-function toStreamEvents(
+function toBaseEvents(
   verdict: AnalysisVerdictEvent["verdict"],
   clarification: string | null,
   translation: string,
 ): AnalysisStreamEvent[] {
-  const events: AnalysisStreamEvent[] = [
+  return [
     { type: "verdict", verdict },
-    ...(clarification !== null ? [{ type: "clarification", message: clarification } as AnalysisClarificationEvent] : []),
+    ...(clarification !== null
+      ? [{ type: "clarification", message: clarification } as AnalysisClarificationEvent]
+      : []),
     { type: "translation", text: translation } as AnalysisTranslationEvent,
   ];
+}
+
+async function withComponentsStage(
+  events: AnalysisStreamEvent[],
+  needs: readonly string[],
+  search: (needs: readonly string[]) => Promise<ComponentSearchOutcome>,
+): Promise<AnalysisStreamEvent[]> {
+  try {
+    const outcome = await search(needs);
+    if (outcome.status === "success") {
+      events.push({
+        type: "components",
+        figmaConnected: outcome.figmaConnected,
+        components: outcome.components,
+      } as AnalysisComponentsEvent);
+    } else {
+      events.push(toErrorEvent(outcome.message));
+    }
+  } catch (error: unknown) {
+    events.push(
+      toErrorEvent(
+        error instanceof AnalysisNotWiredError
+          ? "La recherche de composants n'est pas encore câblée (BACK-8)."
+          : "La recherche de composants a échoué.",
+      ),
+    );
+  }
   return events;
 }
 

@@ -38,6 +38,12 @@ export interface AnalysisResult {
   translation: string;
   /** Message de clarification conforme au gabarit ARCHI-5, ou `null` si verdict `coherent`. */
   clarification: string | null;
+  /**
+   * Besoins fonctionnels identifiés, consommés par BACK-8 pour la recherche de composants.
+   * Sous-produit du même appel IA (BACK-8, ligne 199 : « sous-produit de l'analyse IA de
+   * BACK-7 ou appel séparé ») — vide si l'IA n'en identifie aucun.
+   */
+  needs: string[];
   /** ISO 8601 de l'analyse. */
   analyzedAt: string;
   /** Empreinte SHA-256 de la source du ticket, pour la détection de mise à jour (BACK-9). */
@@ -65,16 +71,19 @@ interface RawAnalysis {
   verdict?: unknown;
   translation?: unknown;
   questions?: unknown;
+  needs?: unknown;
 }
 
 /**
  * Résultat machine de l'IA, avant validation. `questions` est une liste de questions en
  * texte libre ; le formatage conforme au gabarit (ARCHI-5) est appliqué APRÈS validation.
+ * `needs` est la liste des besoins fonctionnels, brute puis filtrée des chaînes vides.
  */
 interface ParsedAnalysis {
   verdict: Verdict;
   translation: string;
   questions: string[];
+  needs: string[];
 }
 
 const PROMPT_SYSTEM_GUARD =
@@ -104,10 +113,11 @@ function buildAnalysisPrompt(ticket: TicketSnapshot, corpus: readonly TicketSnap
     "Historique de comparaison :",
     corpusBlock,
     "",
-    "Produis UNIQUEMENT un objet JSON, sans texte autour, avec exactement trois clés :",
+    "Produis UNIQUEMENT un objet JSON, sans texte autour, avec exactement quatre clés :",
     '- "verdict" : l\'un des trois littéraux "coherent", "minor_reservations" ou "breaking_risk" ;',
     '- "translation" : une reformulation du ticket en langage clair, sans jargon, TOUJOURS présente ;',
-    '- "questions" : un tableau de questions de clarification (chaînes), vide si le verdict est "coherent".',
+    '- "questions" : un tableau de questions de clarification (chaînes), vide si le verdict est "coherent" ;',
+    '- "needs" : un tableau de besoins fonctionnels distincts du ticket (chaînes courtes), vide si aucun.',
   ].join("\n");
 }
 
@@ -134,10 +144,15 @@ function parseCompletion(raw: string): ParsedAnalysis | null {
   if (!Array.isArray(questions) || questions.some((q) => typeof q !== "string")) {
     return null;
   }
+  const needs = candidate.needs;
+  if (!Array.isArray(needs) || needs.some((n) => typeof n !== "string")) {
+    return null;
+  }
   return {
     verdict,
     translation: candidate.translation.trim(),
     questions: questions.map((q) => (q as string).trim()).filter((q) => q !== ""),
+    needs: needs.map((n) => (n as string).trim()).filter((n) => n !== ""),
   };
 }
 
@@ -200,6 +215,7 @@ export async function analyzeTicket(
       verdict: parsed.verdict,
       translation: parsed.translation,
       clarification,
+      needs: parsed.needs,
       analyzedAt: now.toISOString(),
       sourceHash: hashSource(ticket),
     },

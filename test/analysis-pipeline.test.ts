@@ -32,6 +32,7 @@ const coherent = completionReturning(
     verdict: "coherent",
     translation: "Le ticket ajoute un champ date.",
     questions: [],
+    needs: ["Champ date"],
   }),
 );
 
@@ -40,6 +41,7 @@ const ambiguous = completionReturning(
     verdict: "minor_reservations",
     translation: "Le ticket ajoute un champ date.",
     questions: ["Quelle plage de dates ?", "Fuseau horaire ?"],
+    needs: ["Champ date", "Sélecteur de plage"],
   }),
 );
 
@@ -51,6 +53,7 @@ describe("analyzeTicket", () => {
       assert.equal(outcome.result.verdict, "coherent");
       assert.equal(outcome.result.clarification, null);
       assert.equal(outcome.result.translation, "Le ticket ajoute un champ date.");
+      assert.deepEqual(outcome.result.needs, ["Champ date"]);
     }
   });
 
