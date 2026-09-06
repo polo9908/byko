@@ -12,6 +12,29 @@
   max-width: 560px;
 }
 
+/* Réserve la place de la barre d'action fixe (variante wizard). */
+.columnWithBar {
+  width: 100%;
+  max-width: 560px;
+  padding-bottom: 96px;
+}
+
+.backLink {
+  align-self: flex-start;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  background: none;
+  border: none;
+  padding: 0 0 14px;
+  cursor: pointer;
+}
+
+.backLink:hover {
+  color: var(--accent-strong);
+}
+
 .header {
   margin-bottom: 28px;
 }
@@ -290,6 +313,104 @@
 
 .retryButton:hover {
   background: var(--accent-strong);
+}
+
+/* Barre d'action fixe (wizard) : toujours visible sans scroll. */
+.actionBar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  padding: 14px 24px;
+  background: rgba(250, 246, 239, 0.94);
+  backdrop-filter: blur(6px);
+  border-top: 1px solid var(--line);
+}
+
+.actionBarBlocked {
+  composes: actionBar;
+  background: rgba(251, 237, 234, 0.96);
+  border-top-color: #eac9c0;
+}
+
+.actionInner {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.blockers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.blockerRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  font: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.blockerBadge {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #8f2d20;
+  background: #f6d9d1;
+  border-radius: 6px;
+  padding: 3px 8px;
+  margin-top: 1px;
+}
+
+.blockerText {
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: #7f241b;
+}
+
+.blockerRow:hover .blockerText {
+  text-decoration: underline;
+}
+
+.readyNote {
+  flex: 1;
+  font-size: 13.5px;
+  color: var(--ink-muted);
+}
+
+.primaryButton {
+  flex: none;
+  padding: 12px 30px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.primaryButton:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 @keyframes fade-in {

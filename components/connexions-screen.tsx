@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 
-import { firstBlockToConfigure } from "@/lib/connexions";
+import { blockingIssues, firstBlockToConfigure, type BlockIssue } from "@/lib/connexions";
 import { PROVIDER_LINKS, getCreateTokenLabel } from "@/lib/providers-links";
 import type {
   ConnectionBlockId,
@@ -110,7 +110,15 @@ async function fetchSettingsState(): Promise<SettingsState> {
   return parsed.settings;
 }
 
-export function ConnexionsScreen() {
+export function ConnexionsScreen({
+  variant = "wizard",
+  onFinish,
+  onBack,
+}: {
+  variant?: "wizard" | "params";
+  onFinish?: (settings: SettingsState) => void;
+  onBack?: () => void;
+} = {}) {
   const [attempt, setAttempt] = useState(0);
   const [settings, setSettings] = useState<SettingsState | null>(null);
   const [expanded, setExpanded] = useState<ConnectionBlockId | null>(null);
@@ -166,6 +174,25 @@ export function ConnexionsScreen() {
   const toggle = (block: ConnectionBlockId) => {
     setExpanded((current) => (current === block ? null : block));
   };
+
+  const openBlock = (block: ConnectionBlockId) => {
+    setExpanded(block);
+    requestAnimationFrame(() => {
+      document.getElementById(`connection-block-${block}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+  };
+
+  // FRONT-4 : blocages qui empêchent « Terminer ». Un échec de test frais (cette session)
+  // prime sur le lastError persisté — c'est le message le plus récent qui explique le bloc.
+  const issues: BlockIssue[] = blockingIssues(settings).map((issue) => {
+    const latest = tests[issue.block];
+    return latest.status === "error" && latest.message
+      ? { ...issue, message: latest.message }
+      : issue;
+  });
 
   const clearTest = (block: ConnectionBlockId) => {
     setTests((current) => ({ ...current, [block]: IDLE_ATTEMPT }));
@@ -314,12 +341,23 @@ export function ConnexionsScreen() {
 
   return (
     <main className={styles.screen}>
-      <div className={styles.column}>
+      <div className={variant === "wizard" ? styles.columnWithBar : styles.column}>
         <header className={styles.header}>
-          <p className={styles.eyebrow}>Configuration</p>
-          <h1 className={styles.title}>Connexions</h1>
+          {variant === "params" && onBack !== undefined && (
+            <button type="button" className={styles.backLink} onClick={onBack}>
+              ← Retour
+            </button>
+          )}
+          <p className={styles.eyebrow}>
+            {variant === "wizard" ? "Configuration" : "Application"}
+          </p>
+          <h1 className={styles.title}>
+            {variant === "wizard" ? "Connexions" : "Paramètres"}
+          </h1>
           <p className={styles.intro}>
-            Connectez vos outils pour analyser vos tickets avant de les démarrer.
+            {variant === "wizard"
+              ? "Connectez vos outils pour analyser vos tickets avant de les démarrer."
+              : "Gérez vos connexions Jira, Figma et votre modèle IA."}
           </p>
         </header>
 
@@ -330,7 +368,11 @@ export function ConnexionsScreen() {
             const done = state.status === "connected" || state.status === "skipped";
             const test = tests[id];
             return (
-              <section key={id} className={done && !isOpen ? styles.blockDone : styles.block}>
+              <section
+                key={id}
+                id={`connection-block-${id}`}
+                className={done && !isOpen ? styles.blockDone : styles.block}
+              >
                 <button
                   type="button"
                   className={styles.blockHeader}
@@ -396,6 +438,40 @@ export function ConnexionsScreen() {
             );
           })}
         </div>
+
+        {variant === "wizard" && (
+          <div className={issues.length > 0 ? styles.actionBarBlocked : styles.actionBar}>
+            <div className={styles.actionInner}>
+              {issues.length > 0 ? (
+                <div className={styles.blockers}>
+                  {issues.map((issue) => (
+                    <button
+                      key={issue.block}
+                      type="button"
+                      className={styles.blockerRow}
+                      onClick={() => openBlock(issue.block)}
+                    >
+                      <span className={styles.blockerBadge}>
+                        {issue.block === "jira" ? "Jira" : "Modèle IA"}
+                      </span>
+                      <span className={styles.blockerText}>{issue.message}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className={styles.readyNote}>Tout est prêt pour l&apos;étape suivante.</p>
+              )}
+              <button
+                type="button"
+                className={styles.primaryButton}
+                disabled={issues.length > 0}
+                onClick={() => onFinish?.(settings)}
+              >
+                Terminer
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );
