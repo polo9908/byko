@@ -266,12 +266,12 @@ function resolveManualScope(rawScopeHint: unknown): ScopeResolution {
 /* -------------------------------------------------------------------------- */
 
 /** Accès réseau dérivé du coffre : base d'URL de l'API et en-tête prêt à poser. */
-interface JiraApiAccess {
+export interface JiraApiAccess {
   readonly apiBase: string;
   readonly authorization: string;
 }
 
-type AccessResult = { readonly ok: true; readonly access: JiraApiAccess } | { readonly ok: false; readonly message: string };
+export type AccessResult = { readonly ok: true; readonly access: JiraApiAccess } | { readonly ok: false; readonly message: string };
 
 const MESSAGE_NOT_CONNECTED =
   "Jira n'est pas connecté : pour comparer un ticket Jira à son périmètre, connecte d'abord ton instance dans les Paramètres (bloc Jira).";
@@ -283,12 +283,15 @@ const MESSAGE_NOT_CONNECTED =
  * apparaît (en-tête §1), et la valeur ne transite par aucune variable conservée au-delà de
  * la construction de l'en-tête.
  *
+ * Exporté pour `lib/jira-tickets.ts` (liste de l'espace de travail, FRONT-7) : la lecture
+ * du coffre et la dérivation de l'accès sont une seule source, jamais recopiées.
+ *
  * L'URL persistée a été validée à la sauvegarde (BACK-1 via BACK-4), mais le coffre peut
  * avoir été édité hors de l'application : les deux gardes ci-dessous (URL valide, `https://`)
  * sont de la défense en profondeur, pas du luxe — un jeton en Basic sur `http://` voyagerait
  * en clair (invariant 6 de `lib/jira-connection.ts`).
  */
-async function readJiraApiAccess(): Promise<AccessResult> {
+export async function readJiraApiAccess(): Promise<AccessResult> {
   const store = getSettingsStore();
   const result = await store.read();
 

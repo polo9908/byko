@@ -736,6 +736,26 @@ injectera le flag champ par champ, en respectant la discipline du §Jetons. Un c
 d'historique illisible doit répondre en `error` (jamais une liste sans flag), et une lecture
 en erreur ne doit pas être rabattue sur « aucune analyse ».
 
+## `GET /api/tickets`
+
+Liste de gauche de l'espace de travail (FRONT-7). Câblage final de BACK-10 : la liste Jira
+des tickets ouverts, dans l'ORDRE RENVOYÉ PAR JIRA (`ORDER BY priority DESC, updated DESC`),
+avec le flag `alreadyAnalyzed` dérivé de l'historique (BACK-10). L'analyse n'influence jamais
+l'ordre — la liste n'est jamais réordonnée par le statut d'analyse.
+
+**Réponse** — `GetTicketsResponse` (`lib/types/tickets.ts`) :
+
+| `status` | Charge utile |
+| --- | --- |
+| `"success"` | `jiraConnected: boolean` + `tickets: TicketListItem[]` |
+| `"error"` | `message` (coffre illisible, Jira refuse, réseau) |
+
+- `jiraConnected: false` (liste vide) = Jira non connecté : état normal du mode manuel,
+  FRONT-7 remplace la liste par le formulaire de saisie.
+- Chaque `TicketListItem` : `key`, `summary`, `priorityName`, `priorityIconUrl?`,
+  `updatedAt` (ISO ou `null`), `alreadyAnalyzed`.
+- Un coffre d'historique illisible répond en `error` — jamais une liste sans flag.
+
 ## Décisions actées le 31/08/2026 (ex-« Questions ouvertes »)
 
 Les 7 questions laissées ouvertes par ARCHI-2 le 29/08/2026 ont été tranchées le 31/08/2026
