@@ -12,6 +12,15 @@
   max-width: 560px;
 }
 
+/* Utilisé en contexte « embedded » (dans la modale Paramètres) : pas d'écran plein. */
+.embedded {
+  width: 100%;
+}
+
+.columnEmbedded {
+  width: 100%;
+}
+
 /* Réserve la place de la barre d'action fixe (variante wizard). */
 .columnWithBar {
   width: 100%;

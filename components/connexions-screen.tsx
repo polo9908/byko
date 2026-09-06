@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 
+import {
+  ConnectionBlock,
+  type Attempt,
+} from "@/components/connection-block";
 import { blockingIssues, firstBlockToConfigure, type BlockIssue } from "@/lib/connexions";
-import { PROVIDER_LINKS, getCreateTokenLabel } from "@/lib/providers-links";
 import type {
   ConnectionBlockId,
   GetSettingsResponse,
@@ -15,19 +18,20 @@ import type {
 import styles from "./connexions-screen.module.css";
 
 /**
- * FRONT-2/FRONT-3 — écran Connexions : accordéon des 3 blocs + test de connexion au blur.
+ * FRONT-2/3/4 — écran Connexions (wizard) et section Connexions de la modale Paramètres
+ * (FRONT-12).
  *
- * FRONT-2 (structure) : un seul bloc développé à la fois ; les blocs déjà traités
- * (`connected`, ou `skipped` pour Figma) démarrent repliés, le premier non traité s'ouvre ;
- * champs pré-remplis depuis `GET /api/settings` (jamais le jeton, non stocké) ; liens de
- * création de jeton (Jira : compte Atlassian ; IA : dynamique par provider, ARCHI-2b) ;
- * Figma porte « Passer cette étape » — jamais le mot « optionnel ».
+ * Orchestrateur des blocs de connexion (ARCHI-6) : lecture de l'état réel
+ * (`GET /api/settings`), valeurs saisies, test au blur (FRONT-3), persistance à la
+ * validation, accordéon à ouverture unique, bandeau de blocage + « Terminer » (FRONT-4).
  *
- * FRONT-3 (test en direct) : dès que le champ jeton perd le focus (`onBlur`), la connexion
- * est testée via `POST /api/settings/test-connection` (BACK-1/2/3) — aucun bouton
- * « Tester ». Trois états visuels distincts : en cours (spinner), succès (vert, l'écran
- * enchaîne sur le bloc suivant après persistance via `POST /api/settings`), erreur (rouge,
- * croix + message exact renvoyé par le backend — jamais un texte générique).
+ * Deux présentations du même orchestrateur :
+ * - `variant="wizard"` (défaut) : page complète avec en-tête et barre d'action ;
+ * - `variant="params"` + `embedded` : uniquement la liste des blocs, montée dans la modale
+ *   Paramètres (FRONT-11/12) — la modale fournit l'en-tête (titre, version, fermeture).
+ *
+ * Le comportement d'un bloc (formulaires, test, statuts, liens, « Passer cette étape »)
+ * vit dans `components/connection-block.tsx` — aucune duplication entre les contextes.
  */
 
 const UNREADABLE_MESSAGE =
@@ -56,22 +60,6 @@ const BLOCK_META: ReadonlyArray<{
   { id: "figma", name: "Figma", glyph: "F" },
   { id: "ai", name: "Modèle IA", glyph: "IA" },
 ];
-
-/**
- * Page officielle de création d'un jeton API pour Jira Cloud (id.atlassian.com).
- * Indépendante de l'instance : le jeton est créé au niveau du compte Atlassian, pas de
- * l'instance. (Les instances Data Center auto-hébergées utilisent un autre mécanisme —
- * PAT — hors périmètre V1 du wizard.)
- */
-const JIRA_TOKEN_CREATE_URL = "https://id.atlassian.com/manage-profile/security/api-tokens";
-const JIRA_TOKEN_CREATE_LABEL = "Créer un jeton API Jira";
-
-type AttemptStatus = "idle" | "testing" | "success" | "error";
-
-interface Attempt {
-  status: AttemptStatus;
-  message?: string;
-}
 
 const IDLE_ATTEMPT: Attempt = { status: "idle" };
 
@@ -112,12 +100,12 @@ async function fetchSettingsState(): Promise<SettingsState> {
 
 export function ConnexionsScreen({
   variant = "wizard",
+  embedded = false,
   onFinish,
-  onBack,
 }: {
   variant?: "wizard" | "params";
+  embedded?: boolean;
   onFinish?: (settings: SettingsState) => void;
-  onBack?: () => void;
 } = {}) {
   const [attempt, setAttempt] = useState(0);
   const [settings, setSettings] = useState<SettingsState | null>(null);
@@ -152,7 +140,7 @@ export function ConnexionsScreen({
 
   if (errorMessage !== null) {
     return (
-      <main className={styles.screen}>
+      <div className={embedded ? styles.embedded : styles.screen}>
         <div className={styles.messageBlock}>
           <p className={styles.errorText}>{errorMessage}</p>
           <button
@@ -163,12 +151,12 @@ export function ConnexionsScreen({
             Réessayer
           </button>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (settings === null) {
-    return <main className={styles.screen} aria-hidden="true" />;
+    return <div className={embedded ? styles.embedded : styles.screen} aria-hidden="true" />;
   }
 
   const toggle = (block: ConnectionBlockId) => {
@@ -314,132 +302,120 @@ export function ConnexionsScreen({
     }
   };
 
-  const runJiraTest = () => {
-    const { instanceUrl, email, apiToken } = values.jira;
-    void performTest(
-      "jira",
-      { instanceUrl, email, apiToken },
-      apiToken,
-      { instanceUrl, email },
-    );
-  };
-
-  const runFigmaTest = () => {
-    const { apiToken } = values.figma;
-    void performTest("figma", { apiToken }, apiToken, {});
-  };
-
-  const runAiTest = () => {
-    const { provider, apiToken } = values.ai;
-    void performTest(
-      "ai",
-      provider === "" ? {} : { provider, apiToken },
-      apiToken,
-      { provider: provider === "" ? undefined : provider },
-    );
+  const runTestHandlers: Record<
+    ConnectionBlockId,
+    () => void
+  > = {
+    jira: () => {
+      const { instanceUrl, email, apiToken } = values.jira;
+      void performTest("jira", { instanceUrl, email, apiToken }, apiToken, {
+        instanceUrl,
+        email,
+      });
+    },
+    figma: () => {
+      const { apiToken } = values.figma;
+      void performTest("figma", { apiToken }, apiToken, {});
+    },
+    ai: () => {
+      const { provider, apiToken } = values.ai;
+      void performTest(
+        "ai",
+        provider === "" ? {} : { provider, apiToken },
+        apiToken,
+        { provider: provider === "" ? undefined : provider },
+      );
+    },
   };
 
   return (
-    <main className={styles.screen}>
-      <div className={variant === "wizard" ? styles.columnWithBar : styles.column}>
-        <header className={styles.header}>
-          {variant === "params" && onBack !== undefined && (
-            <button type="button" className={styles.backLink} onClick={onBack}>
-              ← Retour
-            </button>
-          )}
-          <p className={styles.eyebrow}>
-            {variant === "wizard" ? "Configuration" : "Application"}
-          </p>
-          <h1 className={styles.title}>
-            {variant === "wizard" ? "Connexions" : "Paramètres"}
-          </h1>
-          <p className={styles.intro}>
-            {variant === "wizard"
-              ? "Connectez vos outils pour analyser vos tickets avant de les démarrer."
-              : "Gérez vos connexions Jira, Figma et votre modèle IA."}
-          </p>
-        </header>
+    <main className={embedded ? styles.embedded : styles.screen}>
+      <div
+        className={
+          embedded
+            ? styles.columnEmbedded
+            : variant === "wizard"
+              ? styles.columnWithBar
+              : styles.column
+        }
+      >
+        {!embedded && (
+          <header className={styles.header}>
+            <p className={styles.eyebrow}>
+              {variant === "wizard" ? "Configuration" : "Application"}
+            </p>
+            <h1 className={styles.title}>
+              {variant === "wizard" ? "Connexions" : "Paramètres"}
+            </h1>
+            <p className={styles.intro}>
+              {variant === "wizard"
+                ? "Connectez vos outils pour analyser vos tickets avant de les démarrer."
+                : "Gérez vos connexions Jira, Figma et votre modèle IA."}
+            </p>
+          </header>
+        )}
 
         <div className={styles.accordion}>
           {BLOCK_META.map(({ id, name, glyph }) => {
-            const state = settings[id];
-            const isOpen = expanded === id;
-            const done = state.status === "connected" || state.status === "skipped";
             const test = tests[id];
+            const open = expanded === id;
+            if (id === "jira") {
+              return (
+                <ConnectionBlock
+                  key={id}
+                  provider="jira"
+                  name={name}
+                  glyph={glyph}
+                  open={open}
+                  state={settings[id]}
+                  test={test}
+                  values={values.jira}
+                  onChange={(patch) => patchValues("jira", patch)}
+                  onTokenBlur={runTestHandlers.jira}
+                  onToggle={() => toggle("jira")}
+                />
+              );
+            }
+            if (id === "figma") {
+              return (
+                <ConnectionBlock
+                  key={id}
+                  provider="figma"
+                  name={name}
+                  glyph={glyph}
+                  open={open}
+                  state={settings[id]}
+                  test={test}
+                  apiToken={values.figma.apiToken}
+                  skipping={skipping}
+                  onTokenChange={(apiToken) => patchValues("figma", { apiToken })}
+                  onTokenBlur={runTestHandlers.figma}
+                  onSkip={() => void skipFigma()}
+                  onToggle={() => toggle("figma")}
+                />
+              );
+            }
             return (
-              <section
+              <ConnectionBlock
                 key={id}
-                id={`connection-block-${id}`}
-                className={done && !isOpen ? styles.blockDone : styles.block}
-              >
-                <button
-                  type="button"
-                  className={styles.blockHeader}
-                  onClick={() => toggle(id)}
-                  aria-expanded={isOpen}
-                >
-                  <span className={styles.glyph} aria-hidden="true">
-                    {glyph}
-                  </span>
-                  <span className={styles.blockTitle}>{name}</span>
-                  <StatusSummary state={state} />
-                  <span
-                    className={isOpen ? styles.chevronOpen : styles.chevron}
-                    aria-hidden="true"
-                  >
-                    ›
-                  </span>
-                </button>
-                {isOpen && (
-                  <div className={styles.panel}>
-                    {id === "jira" && (
-                      <>
-                        <JiraForm
-                          values={values.jira}
-                          tokenStatus={test.status}
-                          onChange={(patch) => patchValues("jira", patch)}
-                          onTokenBlur={runJiraTest}
-                        />
-                        <AttemptFeedback attempt={test} />
-                      </>
-                    )}
-                    {id === "figma" && (
-                      <>
-                        <FigmaForm
-                          apiToken={values.figma.apiToken}
-                          skipped={state.status === "skipped"}
-                          skipping={skipping}
-                          testing={test.status === "testing"}
-                          tokenStatus={test.status}
-                          onTokenChange={(apiToken) => patchValues("figma", { apiToken })}
-                          onTokenBlur={runFigmaTest}
-                          onSkip={() => void skipFigma()}
-                        />
-                        <AttemptFeedback attempt={test} />
-                      </>
-                    )}
-                    {id === "ai" && (
-                      <>
-                        <AiForm
-                          provider={values.ai.provider}
-                          apiToken={values.ai.apiToken}
-                          tokenStatus={test.status}
-                          onProviderChange={(provider) => patchValues("ai", { provider })}
-                          onTokenChange={(apiToken) => patchValues("ai", { apiToken })}
-                          onTokenBlur={runAiTest}
-                        />
-                        <AttemptFeedback attempt={test} />
-                      </>
-                    )}
-                  </div>
-                )}
-              </section>
+                provider="ai"
+                name={name}
+                glyph={glyph}
+                open={open}
+                state={settings[id]}
+                test={test}
+                providerValue={values.ai.provider}
+                apiToken={values.ai.apiToken}
+                onProviderChange={(provider) => patchValues("ai", { provider })}
+                onTokenChange={(apiToken) => patchValues("ai", { apiToken })}
+                onTokenBlur={runTestHandlers.ai}
+                onToggle={() => toggle("ai")}
+              />
             );
           })}
         </div>
 
-        {variant === "wizard" && (
+        {!embedded && variant === "wizard" && (
           <div className={issues.length > 0 ? styles.actionBarBlocked : styles.actionBar}>
             <div className={styles.actionInner}>
               {issues.length > 0 ? (
@@ -511,231 +487,4 @@ function buildConnectedState(
     return { status: "connected", provider: meta.provider as ProviderId };
   }
   return { status: "not_connected" };
-}
-
-function StatusSummary({ state }: { state: SettingsState[ConnectionBlockId] }) {
-  if (state.status === "connected") {
-    const detail =
-      "account" in state && state.account?.accountName
-        ? state.account.accountName
-        : "provider" in state
-          ? PROVIDER_LINKS[state.provider].label
-          : "instanceUrl" in state
-            ? state.instanceUrl.replace(/^https?:\/\//, "")
-            : undefined;
-    return (
-      <>
-        <span className={styles.chipConnected}>Connecté</span>
-        {detail !== undefined && <span className={styles.blockDetail}>{detail}</span>}
-      </>
-    );
-  }
-  if (state.status === "skipped") {
-    return (
-      <>
-        <span className={styles.chipNeutral}>Passée</span>
-        <span className={styles.blockDetail}>Configurable dans Paramètres</span>
-      </>
-    );
-  }
-  return <span className={styles.chipTodo}>À configurer</span>;
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className={styles.field}>
-      <span className={styles.fieldLabel}>{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function tokenInputClass(status: AttemptStatus): string {
-  if (status === "error") return styles.inputError;
-  if (status === "testing") return styles.inputBusy;
-  return styles.input;
-}
-
-function AttemptFeedback({ attempt }: { attempt: Attempt }) {
-  if (attempt.status === "idle") return null;
-  if (attempt.status === "testing") {
-    return (
-      <p className={styles.attemptRow} role="status">
-        <span className={styles.spinner} aria-hidden="true" />
-        <span className={styles.attemptText}>Test de la connexion en cours…</span>
-      </p>
-    );
-  }
-  if (attempt.status === "error") {
-    return (
-      <p className={styles.attemptRow} role="alert">
-        <span className={styles.attemptIconError} aria-hidden="true">
-          ✕
-        </span>
-        <span className={styles.attemptError}>{attempt.message}</span>
-      </p>
-    );
-  }
-  return (
-    <p className={styles.attemptRow} role="status">
-      <span className={styles.attemptIconOk} aria-hidden="true">
-        ✓
-      </span>
-      <span className={styles.attemptOk}>Connexion validée.</span>
-    </p>
-  );
-}
-
-function JiraForm({
-  values,
-  tokenStatus,
-  onChange,
-  onTokenBlur,
-}: {
-  values: { instanceUrl: string; email: string; apiToken: string };
-  tokenStatus: AttemptStatus;
-  onChange: (patch: Partial<{ instanceUrl: string; email: string; apiToken: string }>) => void;
-  onTokenBlur: () => void;
-}) {
-  return (
-    <div className={styles.form}>
-      <Field label="URL de l'instance">
-        <input
-          type="url"
-          className={styles.input}
-          value={values.instanceUrl}
-          placeholder="https://votre-domaine.atlassian.net"
-          onChange={(event) => onChange({ instanceUrl: event.target.value })}
-        />
-      </Field>
-      <Field label="Adresse e-mail">
-        <input
-          type="email"
-          className={styles.input}
-          value={values.email}
-          placeholder="vous@entreprise.fr"
-          onChange={(event) => onChange({ email: event.target.value })}
-        />
-      </Field>
-      <Field label="Jeton API">
-        <input
-          type="password"
-          className={tokenInputClass(tokenStatus)}
-          value={values.apiToken}
-          onChange={(event) => onChange({ apiToken: event.target.value })}
-          onBlur={onTokenBlur}
-        />
-      </Field>
-      <a
-        className={styles.tokenLink}
-        href={JIRA_TOKEN_CREATE_URL}
-        target="_blank"
-        rel="noreferrer"
-      >
-        {JIRA_TOKEN_CREATE_LABEL}
-      </a>
-    </div>
-  );
-}
-
-function FigmaForm({
-  apiToken,
-  skipped,
-  skipping,
-  testing,
-  tokenStatus,
-  onTokenChange,
-  onTokenBlur,
-  onSkip,
-}: {
-  apiToken: string;
-  skipped: boolean;
-  skipping: boolean;
-  testing: boolean;
-  tokenStatus: AttemptStatus;
-  onTokenChange: (token: string) => void;
-  onTokenBlur: () => void;
-  onSkip: () => void;
-}) {
-  return (
-    <div className={styles.form}>
-      <Field label="Jeton">
-        <input
-          type="password"
-          className={tokenInputClass(tokenStatus)}
-          value={apiToken}
-          onChange={(event) => onTokenChange(event.target.value)}
-          onBlur={onTokenBlur}
-        />
-      </Field>
-      {!skipped && (
-        <button
-          type="button"
-          className={styles.skipLink}
-          onClick={onSkip}
-          disabled={skipping || testing}
-        >
-          {skipping ? "Passage…" : "Passer cette étape, configurable plus tard dans Paramètres"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function AiForm({
-  provider,
-  apiToken,
-  tokenStatus,
-  onProviderChange,
-  onTokenChange,
-  onTokenBlur,
-}: {
-  provider: ProviderId | "";
-  apiToken: string;
-  tokenStatus: AttemptStatus;
-  onProviderChange: (provider: ProviderId) => void;
-  onTokenChange: (token: string) => void;
-  onTokenBlur: () => void;
-}) {
-  return (
-    <div className={styles.form}>
-      <Field label="Fournisseur du modèle">
-        <select
-          className={styles.input}
-          value={provider}
-          onChange={(event) => onProviderChange(event.target.value as ProviderId)}
-        >
-          <option value="" disabled>
-            Choisir un fournisseur
-          </option>
-          {(Object.keys(PROVIDER_LINKS) as ProviderId[]).map((id) => (
-            <option key={id} value={id}>
-              {PROVIDER_LINKS[id].label}
-            </option>
-          ))}
-        </select>
-      </Field>
-      {provider !== "" && (
-        <>
-          <Field label="Jeton">
-            <input
-              type="password"
-              className={tokenInputClass(tokenStatus)}
-              value={apiToken}
-              onChange={(event) => onTokenChange(event.target.value)}
-              onBlur={onTokenBlur}
-            />
-          </Field>
-          <a
-            className={styles.tokenLink}
-            href={PROVIDER_LINKS[provider].tokenUrl}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {getCreateTokenLabel(provider)}
-          </a>
-        </>
-      )}
-    </div>
-  );
 }
