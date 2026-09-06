@@ -8,6 +8,8 @@ import assert from "node:assert/strict";
 import {
   COST_LEVEL_LABELS,
   DEFAULT_COMPARISON_WINDOW,
+  VERDICT_LABELS,
+  VERDICT_THEMES,
   WINDOW_OPTIONS,
   formatScopeCount,
   priorityFlagColor,
@@ -37,5 +39,16 @@ describe("priorityFlagColor", () => {
   test("priorités Jira connues → couleurs distinctes ; inconnue → neutre", () => {
     assert.notEqual(priorityFlagColor("Highest"), priorityFlagColor("Low"));
     assert.equal(priorityFlagColor("inconnue"), priorityFlagColor("Autre inconnue"));
+  });
+});
+
+describe("verdicts (FRONT-9)", () => {
+  test("3 libellés distincts et 3 couleurs distinctes au premier coup d'œil", () => {
+    assert.deepEqual(
+      Object.values(VERDICT_LABELS),
+      ["Cohérent", "Réserves mineures", "Cassure risquée"],
+    );
+    const colors = new Set(["coherent", "minor_reservations", "breaking_risk"].map((v) => VERDICT_THEMES[v as keyof typeof VERDICT_THEMES].color));
+    assert.equal(colors.size, 3);
   });
 });

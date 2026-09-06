@@ -6,7 +6,7 @@
  * Espace de travail (FRONT-7) et le curseur/comptage (FRONT-8).
  */
 
-import type { ComparisonWindow, CostLevel } from "./types/analysis";
+import type { ComparisonWindow, CostLevel, Verdict } from "./types/analysis";
 
 export interface WindowOption {
   value: ComparisonWindow;
@@ -54,3 +54,36 @@ const NEUTRAL_FLAG = "#c9b79c";
 export function priorityFlagColor(priorityName: string): string {
   return PRIORITY_FLAG_COLORS[priorityName] ?? NEUTRAL_FLAG;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Verdict (FRONT-9)                                                          */
+/* -------------------------------------------------------------------------- */
+
+/** Libellés des 3 verdicts (badge + titre). */
+export const VERDICT_LABELS: Record<Verdict, string> = {
+  coherent: "Cohérent",
+  minor_reservations: "Réserves mineures",
+  breaking_risk: "Cassure risquée",
+};
+
+/** Détail de l'infobulle « ? » (survol), par verdict. */
+export const VERDICT_HINTS: Record<Verdict, string> = {
+  coherent:
+    "Le ticket est cohérent avec son historique : vous pouvez le démarrer en confiance.",
+  minor_reservations:
+    "Des points demandent une clarification avant de démarrer. Les questions à poser sont affichées ci-dessous.",
+  breaking_risk:
+    "Des contradictions avec l'historique rendent le démarrage risqué. Lisez la traduction et les questions avant de continuer.",
+};
+
+export interface VerdictTheme {
+  color: string;
+  background: string;
+}
+
+/** Couleurs de badge par verdict (3 couleurs distinctes au premier coup d'œil). */
+export const VERDICT_THEMES: Record<Verdict, VerdictTheme> = {
+  coherent: { color: "#2f6b3a", background: "#e4efe1" },
+  minor_reservations: { color: "#8a6d1a", background: "#f6ecce" },
+  breaking_risk: { color: "#a12f22", background: "#f6deda" },
+};

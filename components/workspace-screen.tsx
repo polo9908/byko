@@ -2,29 +2,21 @@
 
 import { useEffect, useState } from "react";
 
+import { ResultScreen, type ResultRequest } from "@/components/result-screen";
 import { WindowSlider } from "@/components/window-slider";
 import type { ComparisonWindow } from "@/lib/types/analysis";
-import type { AnalysisStreamEvent } from "@/lib/types/analysis";
 import type { GetTicketsResponse, TicketListItem } from "@/lib/types/tickets";
-import { DEFAULT_COMPARISON_WINDOW, priorityFlagColor } from "@/lib/workspace";
+import { DEFAULT_COMPARISON_WINDOW, priorityFlagColor, WINDOW_OPTIONS } from "@/lib/workspace";
 import styles from "./workspace-screen.module.css";
 
 /**
- * FRONT-7 — espace de travail (liste de gauche + panneau du ticket + curseur FRONT-8).
+ * FRONT-7/FRONT-9 — espace de travail.
  *
- * - Jira connecté : liste des tickets (ordre serveur Jira, jamais réordonné par le statut
- *   d'analyse), recherche, toggle « Déjà analysés » (flag `alreadyAnalyzed` de BACK-10),
- *   premier ticket auto-sélectionné, fanion coloré par priorité.
- * - Jira non connecté : la liste est remplacée par le formulaire de saisie manuelle
- *   (contenu + champ « Epic / composant » optionnel).
- * - Le panneau central porte le curseur FRONT-8 (fenêtre + comptage) et l'action d'analyse :
- *   bouton « Relancer l'analyse » grisé tant que la fenêtre n'a pas changé depuis la
- *   dernière analyse (FRONT-8). L'écran de résultat arrive avec FRONT-9 : le retour de
- *   l'analyse s'affiche ici en note d'attente.
+ * Liste de gauche (ordre serveur Jira, jamais réordonné par le statut d'analyse) + panneau
+ * de préparation (curseur FRONT-8) → au lancement, bascule vers l'écran de résultat
+ * FRONT-9 (streaming). Le bouton « Relancer l'analyse » est grisé tant que la fenêtre n'a
+ * pas changé depuis la dernière analyse (FRONT-8).
  */
-
-const ANALYZE_UNREACHABLE =
-  "L'analyse n'a pas pu joindre le serveur. Réessayez dans un instant.";
 
 export function WorkspaceScreen() {
   const [attempt, setAttempt] = useState(0);
@@ -39,8 +31,8 @@ export function WorkspaceScreen() {
   const [manualScope, setManualScope] = useState("");
   const [window, setWindow] = useState<ComparisonWindow>(DEFAULT_COMPARISON_WINDOW);
 
-  const [analyzing, setAnalyzing] = useState(false);
-  const [analysisNote, setAnalysisNote] = useState<{ kind: "error" | "info"; text: string } | null>(null);
+  const [run, setRun] = useState<ResultRequest | null>(null);
+  const [note, setNote] = useState<{ kind: "error" | "info"; text: string } | null>(null);
   const [lastRunWindow, setLastRunWindow] = useState<ComparisonWindow | null>(null);
 
   useEffect(() => {
@@ -80,30 +72,24 @@ export function WorkspaceScreen() {
   const selected =
     selectedKey === null ? null : tickets.find((ticket) => ticket.key === selectedKey) ?? null;
 
-  const unchangedSinceRun =
-    lastRunWindow !== null && lastRunWindow === window;
-  const canAnalyze = !analyzing && !unchangedSinceRun;
+  const unchangedSinceRun = lastRunWindow !== null && lastRunWindow === window;
 
-  const analyze = async () => {
-    const body =
+  const start = () => {
+    const request: ResultRequest | null =
       jiraConnected === true
         ? selected === null
           ? null
-          : {
-              ticketSource: "jira" as const,
-              ticketKey: selected.key,
-              comparisonWindow: window,
-            }
+          : { ticketSource: "jira", ticketKey: selected.key, comparisonWindow: window }
         : manualText.trim() === ""
           ? null
           : {
-              ticketSource: "manual" as const,
+              ticketSource: "manual",
               ticketText: manualText.trim(),
               comparisonWindow: window,
               scopeHint: manualScope.trim() === "" ? undefined : manualScope.trim(),
             };
-    if (body === null) {
-      setAnalysisNote({
+    if (request === null) {
+      setNote({
         kind: "error",
         text:
           jiraConnected === true
@@ -112,35 +98,22 @@ export function WorkspaceScreen() {
       });
       return;
     }
-
-    setAnalyzing(true);
-    setAnalysisNote(null);
-    try {
-      const response = await fetch("/api/analysis", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const text = await response.text();
-      const events = parseSseEvents(text);
-      const terminal = events[events.length - 1];
-      if (!response.ok) {
-        setAnalysisNote({ kind: "error", text: text || ANALYZE_UNREACHABLE });
-      } else if (terminal?.type === "error") {
-        setAnalysisNote({ kind: "error", text: terminal.message });
-      } else {
-        setAnalysisNote({
-          kind: "info",
-          text: "Analyse terminée. L'écran de résultat arrive avec le prochain lot (FRONT-9).",
-        });
-      }
-      setLastRunWindow(window);
-    } catch {
-      setAnalysisNote({ kind: "error", text: ANALYZE_UNREACHABLE });
-    } finally {
-      setAnalyzing(false);
-    }
+    setNote(null);
+    setLastRunWindow(window);
+    setRun(request);
   };
+
+  if (run !== null) {
+    return (
+      <div className={styles.resultView}>
+        <ResultScreen
+          request={run}
+          windowLabel={WINDOW_OPTIONS.find((option) => option.value === run.comparisonWindow)?.label ?? ""}
+          onBack={() => setRun(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={styles.screen}>
@@ -190,17 +163,13 @@ export function WorkspaceScreen() {
                 <li key={ticket.key}>
                   <button
                     type="button"
-                    className={
-                      selectedKey === ticket.key ? styles.rowActive : styles.row
-                    }
+                    className={selectedKey === ticket.key ? styles.rowActive : styles.row}
                     onClick={() => setSelectedKey(ticket.key)}
                   >
                     <span
                       className={styles.flag}
                       aria-hidden="true"
-                      style={{
-                        borderLeftColor: priorityFlagColor(ticket.priorityName),
-                      }}
+                      style={{ borderLeftColor: priorityFlagColor(ticket.priorityName) }}
                     />
                     <span className={styles.rowText}>
                       <span className={styles.rowKey}>{ticket.key}</span>
@@ -235,10 +204,9 @@ export function WorkspaceScreen() {
               window={window}
               onWindowChange={setWindow}
               hasRun={lastRunWindow !== null}
-              analyzing={analyzing}
-              canAnalyze={canAnalyze}
-              analyze={analyze}
-              note={analysisNote}
+              canAnalyze={!unchangedSinceRun}
+              analyze={start}
+              note={note}
             />
           )
         ) : jiraConnected === false ? (
@@ -247,10 +215,9 @@ export function WorkspaceScreen() {
             window={window}
             onWindowChange={setWindow}
             hasRun={lastRunWindow !== null}
-            analyzing={analyzing}
-            canAnalyze={canAnalyze && manualText.trim() !== ""}
-            analyze={analyze}
-            note={analysisNote}
+            canAnalyze={!unchangedSinceRun && manualText.trim() !== ""}
+            analyze={start}
+            note={note}
           />
         ) : null}
       </section>
@@ -301,7 +268,6 @@ function TicketPanel({
   window,
   onWindowChange,
   hasRun,
-  analyzing,
   canAnalyze,
   analyze,
   note,
@@ -311,7 +277,6 @@ function TicketPanel({
   window: ComparisonWindow;
   onWindowChange: (window: ComparisonWindow) => void;
   hasRun: boolean;
-  analyzing: boolean;
   canAnalyze: boolean;
   analyze: () => void;
   note: { kind: "error" | "info"; text: string } | null;
@@ -353,41 +318,15 @@ function TicketPanel({
       </div>
 
       <div className={styles.actionRow}>
-        <button
-          type="button"
-          className={styles.primaryButton}
-          disabled={!canAnalyze || analyzing}
-          onClick={analyze}
-        >
-          {analyzing
-            ? "Analyse en cours…"
-            : hasRun
-              ? "Relancer l'analyse"
-              : "Analyser le ticket"}
+        <button type="button" className={styles.primaryButton} disabled={!canAnalyze} onClick={analyze}>
+          {hasRun ? "Relancer l'analyse" : "Analyser le ticket"}
         </button>
       </div>
       {note !== null && (
-        <p
-          className={note.kind === "error" ? styles.noteError : styles.noteInfo}
-          role={note.kind === "error" ? "alert" : "status"}
-        >
+        <p className={note.kind === "error" ? styles.noteError : styles.noteInfo} role={note.kind === "error" ? "alert" : "status"}>
           {note.text}
         </p>
       )}
     </div>
   );
-}
-
-/** Extrait les événements SSE (`data: {json}`) d'un corps de réponse. */
-export function parseSseEvents(text: string): AnalysisStreamEvent[] {
-  const events: AnalysisStreamEvent[] = [];
-  for (const match of text.matchAll(/^data: (.+)$/gm)) {
-    try {
-      const parsed: unknown = JSON.parse(match[1]);
-      events.push(parsed as AnalysisStreamEvent);
-    } catch {
-      // ligne data illisible : ignorée — le terminal d'erreur, s'il existe, porte la vérité.
-    }
-  }
-  return events;
 }
