@@ -1,5 +1,6 @@
 # Outils internes de développement — pas destinés au dépôt public
 .claude/
+.qwen/
 docs/tickets/
 handoff.md
 .docs/
