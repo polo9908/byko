@@ -14,6 +14,15 @@
  * endpoint de génération vérifié), et — quand Figma EST connecté — l'appel MCP
  * `search_design_system` (aucun serveur MCP configuré). Quand Figma n'est PAS connecté, le
  * défaut de l'étage composants répond honnêtement `figmaConnected: false` sans aucun appel.
+ *
+ * FORME DE RETOUR (avenant BACK-10, `docs/api-contracts.md` §Historique des analyses) :
+ * `runAnalysis` renvoie `{ events, record? }` et plus une liste nue. Les métadonnées
+ * produites par le pipeline (`analyzedAt`, `sourceHash`, `updated` du snapshot analysé) ne
+ * sont PAS streamées — le contrat ARCHI-4 ne les porte pas — mais elles remontent dans
+ * `record`, présent UNIQUEMENT quand l'analyse a réussi en mode Jira sur un ticket portant
+ * sa date de source. C'est le débouché prévu par le commentaire de `lib/analysis-pipeline.ts`
+ * (BACK-7 : métadonnées « consommés par BACK-9/BACK-10 ») : la route persiste cet
+ * enregistrement ; les événements du flux, eux, n'ont pas changé.
  */
 
 import type {
@@ -35,6 +44,7 @@ import { resolveComparisonScope } from "@/lib/jira-scope";
 import type { ComponentSearchOutcome } from "@/lib/component-search";
 import { getSettingsStore } from "@/lib/settings-store";
 import { emptySettingsState, toSettingsState } from "@/lib/settings-mapper";
+import type { PersistedHistoryEntry } from "@/lib/analysis-history";
 
 export interface AnalysisDependencies {
   /** Complétion IA (injectée ; défaut : non câblée). */
@@ -87,12 +97,29 @@ export function defaultAnalysisDependencies(): AnalysisDependencies {
 }
 
 /**
- * Exécute l'analyse et renvoie les événements du flux, DANS l'ordre du contrat.
+ * Résultat d'une analyse : les événements du flux (rien d'autre ne part sur le SSE) et,
+ * quand l'analyse a réussi en mode Jira, l'enregistrement d'historique que BACK-10 doit
+ * persister. `record` est `undefined` en mode manuel (rien à rouvrir — décision BACK-10
+ * n°2), en cas d'événement `error` terminal (résultat incomplet — un échec de l'étage
+ * composants empêche aussi l'enregistrement), et quand le snapshot analysé ne porte pas sa
+ * date de source (`updated` Jira) : sans elle, la fraîcheur du résultat serait indécidable
+ * (décision BACK-10 n°3).
+ */
+export interface RunAnalysisOutcome {
+  /** Événements du flux, DANS l'ordre du contrat ARCHI-4. */
+  readonly events: AnalysisStreamEvent[];
+  /** Enregistrement à persister, présent seulement en succès mode Jira (voir ci-dessus). */
+  readonly record?: PersistedHistoryEntry;
+}
+
+/**
+ * Exécute l'analyse et renvoie les événements du flux, DANS l'ordre du contrat, plus
+ * l'enregistrement d'historique éventuel (voir `RunAnalysisOutcome`).
  */
 export async function runAnalysis(
   request: AnalysisRequest,
   deps: AnalysisDependencies = defaultAnalysisDependencies(),
-): Promise<AnalysisStreamEvent[]> {
+): Promise<RunAnalysisOutcome> {
   const search = deps.searchComponents ?? defaultComponentSearch;
 
   if (request.ticketSource === "manual") {
@@ -104,10 +131,11 @@ export async function runAnalysis(
     };
     const outcome = await analyzeTicket(ticket, [], deps.complete);
     if (outcome.status === "error") {
-      return [toErrorEvent(outcome.message)];
+      return { events: [toErrorEvent(outcome.message)] };
     }
     const events = toBaseEvents(outcome.result.verdict, outcome.result.clarification, outcome.result.translation);
-    return withComponentsStage(events, outcome.result.needs, search);
+    // Mode manuel : jamais d'enregistrement (BACK-9/BACK-10 concernent les tickets Jira).
+    return { events: await withComponentsStage(events, outcome.result.needs, search) };
   }
 
   // Mode Jira : résolution du périmètre (BACK-5), puis récupération du ticket + corpus.
@@ -117,7 +145,7 @@ export async function runAnalysis(
     comparisonWindow: request.comparisonWindow,
   });
   if (scope.status === "error") {
-    return [toErrorEvent(scope.message)];
+    return { events: [toErrorEvent(scope.message)] };
   }
 
   let target: TicketSnapshot;
@@ -131,13 +159,15 @@ export async function runAnalysis(
   } catch (error: unknown) {
     // « Non câblé » (défaut actuel) n'est pas une panne : le message doit le dire. Un vrai
     // échec du récupérateur (une fois celui-ci câblé) restera un message générique.
-    return [
-      toErrorEvent(
-        error instanceof AnalysisNotWiredError
-          ? "La récupération du ticket Jira n'est pas encore câblée (BACK-7)."
-          : "Le contenu du ticket n'a pas pu être récupéré.",
-      ),
-    ];
+    return {
+      events: [
+        toErrorEvent(
+          error instanceof AnalysisNotWiredError
+            ? "La récupération du ticket Jira n'est pas encore câblée (BACK-7)."
+            : "Le contenu du ticket n'a pas pu être récupéré.",
+        ),
+      ],
+    };
   }
 
   const corpus: TicketSnapshot[] = [];
@@ -147,16 +177,48 @@ export async function runAnalysis(
       const item = await deps.fetchTicket(key);
       if (item !== null) corpus.push(item);
     } catch {
-      return [toErrorEvent("Le contenu d'un ticket du périmètre n'a pas pu être récupéré.")];
+      return {
+        events: [toErrorEvent("Le contenu d'un ticket du périmètre n'a pas pu être récupéré.")],
+      };
     }
   }
 
   const outcome = await analyzeTicket(target, corpus, deps.complete);
   if (outcome.status === "error") {
-    return [toErrorEvent(outcome.message)];
+    return { events: [toErrorEvent(outcome.message)] };
   }
-  const events = toBaseEvents(outcome.result.verdict, outcome.result.clarification, outcome.result.translation);
-  return withComponentsStage(events, outcome.result.needs, search);
+  const events = await withComponentsStage(
+    toBaseEvents(outcome.result.verdict, outcome.result.clarification, outcome.result.translation),
+    outcome.result.needs,
+    search,
+  );
+
+  // Un événement `error` terminal — y compris un échec de l'étage composants (BACK-8) —
+  // rend le flux incomplet : rien n'est enregistré, le « résultat » ne serait pas complet.
+  if (events.some((event) => event.type === "error")) {
+    return { events };
+  }
+  // Snapshot sans date de source (repli « ticket introuvable » du récupérateur) : aucune
+  // détection de mise à jour possible plus tard, donc pas d'enregistrement (décision
+  // BACK-10 n°3) — on ne persiste pas un résultat dont on ne pourra jamais vérifier la
+  // fraîcheur. La clé est normalisée (trim) : les clés Jira ne contiennent pas d'espace, et
+  // la relecture (BACK-9) cherchera par la même forme normalisée.
+  if (target.updatedAt === null) {
+    return { events };
+  }
+  return {
+    events,
+    record: {
+      ticketKey: request.ticketKey.trim(),
+      verdict: outcome.result.verdict,
+      translation: outcome.result.translation,
+      clarification: outcome.result.clarification,
+      analyzedAt: outcome.result.analyzedAt,
+      updatedAt: target.updatedAt,
+      sourceHash: outcome.result.sourceHash,
+      comparisonWindow: request.comparisonWindow,
+    },
+  };
 }
 
 function toBaseEvents(

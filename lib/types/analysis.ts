@@ -7,9 +7,14 @@
  * valident rien à la frontière — BACK-6 et BACK-7 devront valider les corps de requête
  * entrants, FRONT-8/9/10 devront vérifier la forme des réponses reçues.
  *
- * Ce contrat porte sur deux endpoints :
+ * Ce contrat porte sur :
  * - `POST /api/analysis` (BACK-7) — analyse complète, résultat en streaming (SSE) ;
- * - `GET /api/analysis/scope-count` (BACK-6) — comptage seul, SANS appel IA.
+ * - `GET /api/analysis/scope-count` (BACK-6) — comptage seul, SANS appel IA ;
+ * - `GET /api/analysis/history` (BACK-9/BACK-10) — relecture du dernier résultat connu d'un
+ *   ticket et détection de mise à jour, SANS appel IA.
+ *
+ * Le flux de `POST /api/analysis` est étendu par un avenant BACK-10 : l'événement
+ * `history_error` (persistance d'historique en échec après une analyse réussie).
  *
  * Règle de non-invention, appliquée ici sur deux points nommés :
  * - les seuils de `costLevel` (quand « low » / « medium » / « high ») ne sont PAS définis ici.
@@ -222,21 +227,43 @@ export interface AnalysisErrorEvent {
 }
 
 /**
+ * Échec de la persistance d'historique (avenant BACK-10), émis par `POST /api/analysis`
+ * quand l'analyse a RÉUSSI (aucun événement `error` dans le flux) mais que l'enregistrement
+ * local du résultat (BACK-10) a échoué — coffre d'historique illisible, clé absente…
+ *
+ * Jamais émis par le pipeline lui-même (`lib/analysis-runner.ts`) : il ne produit que les
+ * événements du contrat ARCHI-4 d'origine. C'est la route qui l'ajoute en dernier, après la
+ * persistance, pour que l'échec d'enregistrement ne soit ni un succès silencieux ni un
+ * événement `error` — ce dernier signifie « le pipeline a échoué », ce qui serait faux ici :
+ * le verdict, la traduction et la clarification sont valides et complets, seule leur
+ * conservation pour les jours suivants a échoué. Le front peut l'afficher en remarque sans
+ * invalider le résultat (décision BACK-10 n°4, `docs/api-contracts.md`).
+ */
+export interface AnalysisHistoryErrorEvent {
+  type: "history_error";
+  message: string;
+}
+
+/**
  * Union discriminée par `type`, dans l'ordre du flux.
  *
  * Ordre attendu : `verdict` (toujours, premier) → `clarification` (optionnel, si verdict ≠
  * `"coherent"`) → `translation` (toujours) → `components` (au stade composants) →
- * `error` (terminal, seulement si le pipeline échoue). Tester `event.type` affine vers la
- * bonne variante sans cast ; l'ordre n'est pas encodé dans le type (un tableau d'événements
- * n'est pas une garantie d'ordre), c'est une obligation de BACK-7, vérifiable en inspectant
- * les événements un par un (critère d'acceptation BACK-7, ligne 123).
+ * `error` (terminal, seulement si le pipeline échoue). `history_error` (avenant BACK-10) est
+ * le seul événement émis par la ROUTE et non par le pipeline : il ne peut donc apparaître
+ * qu'en dernier, après une analyse réussie dont la persistance a échoué. Tester
+ * `event.type` affine vers la bonne variante sans cast ; l'ordre n'est pas encodé dans le
+ * type (un tableau d'événements n'est pas une garantie d'ordre), c'est une obligation de
+ * BACK-7, vérifiable en inspectant les événements un par un (critère d'acceptation BACK-7,
+ * ligne 123).
  */
 export type AnalysisStreamEvent =
   | AnalysisVerdictEvent
   | AnalysisClarificationEvent
   | AnalysisTranslationEvent
   | AnalysisComponentsEvent
-  | AnalysisErrorEvent;
+  | AnalysisErrorEvent
+  | AnalysisHistoryErrorEvent;
 
 /* -------------------------------------------------------------------------- */
 /* GET /api/analysis/scope-count — requête                                     */
@@ -286,4 +313,72 @@ export interface ScopeCountParams {
  */
 export type ScopeCountResponse =
   | { status: "success"; count: number; costLevel: CostLevel }
+  | { status: "error"; message: string };
+
+/* -------------------------------------------------------------------------- */
+/* GET /api/analysis/history — BACK-9/BACK-10 (relecture)                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Dernier résultat d'analyse connu d'un ticket Jira, tel que renvoyé par la relecture
+ * (BACK-9/BACK-10). C'est la forme publique de l'enregistrement persisté
+ * (`lib/analysis-history.ts`) : les métadonnées internes (`sourceHash`, `ticketKey`) n'y
+ * figurent pas — le `ticketKey` est un paramètre de la requête, `sourceHash` n'a aucun
+ * consommateur d'affichage.
+ *
+ * Trois sections rejouées, exactement celles du flux d'ARCHI-4 : `verdict` →
+ * `clarification` (si non nulle) → `translation`. `needs` et l'étage composants (BACK-8) ne
+ * sont PAS historisés : une relecture n'est pas une nouvelle analyse, et la fraîcheur d'une
+ * recherche Figma ne peut pas être garantie sans la relancer (décision BACK-10 n°2,
+ * `docs/api-contracts.md`).
+ *
+ * `updatedAt` est la date de dernière modification Jira du contenu ANALYSÉ (le `updated` du
+ * snapshot au moment de l'analyse), distincte de `analyzedAt` qui est le moment où l'analyse
+ * a été exécutée. C'est `updatedAt` que la détection de mise à jour (BACK-9) compare à la
+ * date courante du ticket.
+ */
+export interface AnalysisHistoryRecord {
+  verdict: Verdict;
+  translation: string;
+  /** Message conforme au gabarit ARCHI-5, ou `null` si le verdict était `coherent`. */
+  clarification: string | null;
+  /** ISO 8601 — moment où l'analyse a été exécutée. */
+  analyzedAt: string;
+  /** ISO 8601 — date de dernière modification Jira du contenu analysé. */
+  updatedAt: string;
+  /** Palier de comparaison utilisé par l'analyse (pré-sélection possible du curseur). */
+  comparisonWindow: ComparisonWindow;
+}
+
+/**
+ * Verdict de fraîcheur d'un résultat connu face à l'état courant du ticket (BACK-9).
+ *
+ * Trois états, jamais deux : l'absence d'un `staleSince` ne doit PAS pouvoir se lire « à
+ * jour » quand la fraîcheur n'a pas pu être vérifiée. `unknown` porte une `reason` —
+ * « non câblé » (récupération Jira pas encore branchée) et panne réelle y sont distinguées,
+ * comme dans le pipeline (décision BACK-9 n°2 et n°4, `docs/api-contracts.md`).
+ */
+export type AnalysisStaleness =
+  | { status: "fresh" }
+  | { status: "stale"; staleSince: string }
+  | { status: "unknown"; reason: string };
+
+/**
+ * Réponse de `GET /api/analysis/history?ticketKey=…` (BACK-9/BACK-10).
+ *
+ * Trois variantes de `status`, alignées sur la règle des trois états du projet :
+ * - `never_analyzed` : AUCUN enregistrement pour cette clé — jamais confondu avec un
+ *   résultat connu, et l'API ne consulte alors PAS Jira (rien à vérifier) ;
+ * - `success` : le dernier résultat connu, accompagné de SON verdict de fraîcheur
+ *   (`staleness`) — le résultat n'est jamais renvoyé sans que sa fraîcheur soit dite ;
+ * - `error` : échec applicatif rattrapé (coffre d'historique illisible, clé absente du
+ *   fichier de clés…), `message` requis — un `4xx` n'arrive que pour une requête malformée
+ *   (`ticketKey` absent ou vide), conformément à la convention de codes HTTP.
+ *
+ * Aucun appel IA sur ce chemin (critère BACK-9) : la seule source externe est la lecture du
+ * ticket Jira (champ `updated`), via une dépendance injectée.
+ */
+export type AnalysisHistoryResponse =
+  | { status: "never_analyzed" }
+  | { status: "success"; record: AnalysisHistoryRecord; staleness: AnalysisStaleness }
   | { status: "error"; message: string };

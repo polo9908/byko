@@ -1,8 +1,9 @@
 # Contrat d'API interne — configuration & test de connexion, pipeline d'analyse
 
-Tickets : **ARCHI-2** (settings), **ARCHI-4** (analyse). Types faisant foi :
-[`lib/types/settings.ts`](../lib/types/settings.ts) pour la configuration et
-[`lib/types/analysis.ts`](../lib/types/analysis.ts) pour l'analyse.
+Tickets : **ARCHI-2** (settings), **ARCHI-4** (analyse), **BACK-9** et **BACK-10**
+(historique des analyses et détection de mise à jour — avenants du 06/09/2026, §Historique
+des analyses). Types faisant foi : [`lib/types/settings.ts`](../lib/types/settings.ts) pour
+la configuration et [`lib/types/analysis.ts`](../lib/types/analysis.ts) pour l'analyse.
 
 Ce document décrit le contrat, il ne le définit pas. **En cas d'écart entre ce fichier et
 le fichier de types de la section concernée, c'est le fichier de types qui fait foi** — ce
@@ -514,6 +515,13 @@ BACK-7 valide le corps de requête à la frontière.
 | `"translation"` | Toujours | `text: string` |
 | `"components"` | Au stade composants | `figmaConnected: boolean`, `components: ComponentRecommendation[]` |
 | `"error"` | Terminal, si le pipeline échoue | `message: string` |
+| `"history_error"` | En dernier, si la persistance d'historique échoue (avenant BACK-10) | `message: string` |
+
+`history_error` (avenant BACK-10, décision BACK-10 n°4) : émis par la ROUTE — jamais par le
+pipeline — quand l'analyse a réussi mais que l'enregistrement local du résultat (BACK-10) a
+échoué. Il ne remplace aucun événement et ne signifie pas que le pipeline a échoué : le
+résultat (verdict → clarification → traduction → composants) est complet et valide, seule sa
+conservation pour les jours suivants a échoué. Voir §Historique des analyses.
 
 **Le verdict d'abord, c'est le critère d'acceptation.** L'ordre verdict → clarification →
 traduction → composants est la règle produit (ligne 12) ; le verdict arrive en premier pour
@@ -599,6 +607,134 @@ couvre le mode manuel.
 contrat aligne sur la convention du projet. Sans variante d'erreur, un échec de résolution du
 périmètre serait indistinguable d'un « 0 ticket » et le badge « 0 tickets · Coût faible »
 mentirait.
+
+## Historique des analyses — BACK-9 et BACK-10 (avenants du 06/09/2026)
+
+Tickets : **BACK-10** (l'app se souvient des tickets déjà analysés) et **BACK-9** (l'utilisateur
+revenant sur un ticket déjà analysé sait si son contenu a changé). Types faisant foi :
+[`lib/types/analysis.ts`](../lib/types/analysis.ts) (formes HTTP) et
+[`lib/analysis-history.ts`](../lib/analysis-history.ts) (schéma persisté).
+
+Les deux tickets partagent une persistance locale : la dernière analyse réussie de chaque
+ticket Jira, chiffrée par le MÊME mécanisme que la configuration (ARCHI-3) mais dans un
+document DÉDIÉ (`history.enc`, même `master.key`). Les décisions ci-dessous documentent les
+écarts et arbitrages pris en les implémentant.
+
+### Persistance (BACK-10)
+
+**décision BACK-10 n°1 — document de coffre DÉDIÉ, pas une extension du document settings.**
+L'historique vit dans `~/.bcc/history.enc`, partageant la clé `master.key` de la
+configuration (`lib/analysis-history.ts`, `defaultHistoryVaultLocation`). Motif : les cycles
+de vie sont indépendants — un coffre de configuration corrompu ne doit pas rendre
+l'historique illisible (ni l'inverse) — et les schémas évoluent séparément (`schemaVersion`
+propre). Le mécanisme du double magasin sur le même `keyPath` est supporté par ARCHI-3
+(`loadOrCreateKey` : écriture `wx`, relecture sur `EEXIST`).
+
+**décision BACK-10 n°2 — un enregistrement par `ticketKey`, la dernière analyse RÉUSSIE
+seulement, et pas d'étage composants historisé.** Le document est une liste d'entrées, une
+par clé (l'écriture remplace l'entrée existante). Chaque entrée porte : le résultat des trois
+sections du flux d'ARCHI-4 (`verdict`, `translation`, `clarification` — `needs` non
+persisté), la date d'analyse (`analyzedAt`), la date de dernière modification Jira du contenu
+analysé (`updatedAt`), l'empreinte de source (`sourceHash`) et le palier de comparaison
+(`comparisonWindow`). `needs` et l'étage composants (BACK-8) ne sont PAS historisés : une
+relecture n'est pas une nouvelle analyse — le résultat rejoué est celui des trois sections, et
+la fraîcheur d'une recherche Figma ne peut pas être garantie sans relancer la recherche.
+**Le mode manuel (saisie sans Jira) n'est JAMAIS historisé** : BACK-9/BACK-10 parlent de
+retrouver des tickets Jira, et une saisie manuelle n'a pas de clé à rouvrir.
+
+**décision BACK-10 n°3 — enregistrement seulement si le flux n'a aucun événement `error` et
+si le snapshot analysé porte sa date de source.** Trois cas n'écrivent rien :
+(a) mode manuel (décision n°2) ; (b) tout événement `error` terminal dans le flux — y compris
+un échec de l'étage composants (BACK-8), qui rend le résultat incomplet ; (c) snapshot du
+ticket sans `updatedAt` (le récupérateur n'a pas trouvé le ticket et le runner a replié sur un
+snapshot vide, comportement BACK-7 existant) — sans date de source, la détection de mise à
+jour (BACK-9) serait impossible, et persister un résultat dont on ne pourra jamais vérifier la
+fraîcheur créerait une fausse confiance. La clé est normalisée par `trim` à l'écriture comme
+à la lecture (les clés Jira ne contiennent pas d'espace). L'écriture a lieu dans la route
+`POST /api/analysis` AVANT la construction du flux, via le magasin partagé
+(`getAnalysisHistoryStore`, même mécanisme que `getSettingsStore`).
+
+**décision BACK-10 n°4 — un échec de persistance ne fait pas échouer l'analyse, et n'est pas
+un succès silencieux.** Si l'écriture de l'enregistrement échoue (coffre d'historique
+illisible, clé absente…), le flux d'analyse reste complet et part tel quel, mais la route lui
+ajoute EN DERNIER l'événement `history_error` (voir la table du §`POST /api/analysis`), dont
+le `message` vient du magasin. L'événement `error` existant n'est pas réutilisé : il signifie
+« le pipeline a échoué », ce qui serait faux — le verdict, la traduction et la clarification
+sont valides, seule leur conservation a échoué. Le front (FRONT-9, à venir) peut l'afficher
+en remarque sans invalider le résultat.
+
+### Relecture (BACK-9)
+
+**`GET /api/analysis/history?ticketKey=…`** — renvoie le dernier résultat connu d'un ticket
+et son verdict de fraîcheur, SANS nouvelle analyse (aucun appel IA sur ce chemin — critère
+d'acceptation BACK-9). Réponse — `AnalysisHistoryResponse` :
+
+| `status` | Charge utile |
+| --- | --- |
+| `"never_analyzed"` | Aucun enregistrement pour cette clé. Jira n'est PAS consulté dans ce cas (rien à vérifier). |
+| `"success"` | `record: AnalysisHistoryRecord` (verdict, translation, clarification, analyzedAt, updatedAt, comparisonWindow) + `staleness: AnalysisStaleness` |
+| `"error"` | `message` requis (échec applicatif rattrapé, ex. coffre d'historique illisible) |
+
+Requête malformée (`ticketKey` absent ou vide après `trim`) → `400`, avant tout accès au
+coffre. Échec applicatif rattrapé → `200` avec la variante `error` (convention de codes HTTP).
+La forme `record` est construite champ par champ : `sourceHash` et `ticketKey` (métadonnées
+internes) n'y figurent pas.
+
+**décision BACK-9 n°1 — « jamais analysé » est un état à part entière, jamais un `record`
+vide.** Un ticket sans entrée répond `never_analyzed`, distinct d'un résultat connu : le
+front ne doit pas afficher un résultat inexistant, et l'API ne consulte pas Jira pour rien.
+
+**décision BACK-9 n°2 — la fraîcheur est un verdict à TROIS états (`AnalysisStaleness`),
+jamais un flag optionnel ambigu.** `staleSince` vit sous `staleness: { status: "stale",
+staleSince }`. L'absence d'un `staleSince` plat ne doit pas pouvoir se lire « à jour » quand
+la fraîcheur n'a pas pu être vérifiée : `unknown` porte une `reason` explicite. Le badge
+« Mis à jour » de FRONT-9 (ligne 273 du ticket : « n'apparaît que si `staleSince` est
+renvoyé par l'API ») ne s'affiche que si
+`staleness.status === "stale"`. Le résultat connu est renvoyé même quand la fraîcheur est
+`unknown` — mais JAMAIS sans que sa fraîcheur soit dite : présenter un résultat comme fiable
+sans avoir pu vérifier l'état courant du ticket serait exactement le « se fier à un résultat
+obsolète » que l'US de BACK-9 veut empêcher.
+
+**décision BACK-9 n°3 — comparaison des dates `updated`, pas de relecture du contenu, et
+`staleSince` = date de modification Jira courante.** La fonction de fraîcheur est PURE
+(`lib/analysis-freshness.ts`) : elle compare `entry.updatedAt` (date Jira du contenu
+ANALYSÉ) au `updated` COURANT du ticket. Si le courant est postérieur, le contenu a changé à
+cette date — `staleSince` porte donc la date de modification courante (le résultat est périmé
+depuis le changement, pas depuis l'analyse). Dates absentes ou illisibles → `unknown`, jamais
+« à jour » par défaut. `updated` est la sémantique Jira de « le contenu a changé » : comparer
+les dates suffit, re-hasher le contenu exigerait une lecture plus lourde que le champ qui
+voyage dans la même réponse (le ticket BACK-7 marque aussi `sourceHash`, conservé dans
+l'enregistrement pour toute vérification future plus fine).
+
+**décision BACK-9 n°4 — l'état courant du ticket passe par une dépendance INJECTÉE, dont le
+défaut est « non câblé », distingué d'une panne.** La route utilise
+`defaultHistoryLookupDependencies()` (même forme que `fetchTicket` du pipeline) ; le
+connecteur de lecture Jira réel arrive avec le câblage de la liste de tickets (FRONT-7). Tant
+qu'il n'est pas branché, un résultat connu répond `success` avec
+`staleness: { status: "unknown", reason }` où la raison dit que la récupération n'est pas
+encore câblée — jamais un message de panne invitant à réessayer en vain. Une panne réelle du
+récupérateur (une fois câblé) reste un message générique distinct.
+
+### Flag `alreadyAnalyzed` — injection future dans `GET /api/tickets`
+
+BACK-10 (ligne 179 du ticket) : « `GET /api/tickets` (liste de gauche) inclut un flag
+`alreadyAnalyzed: boolean` par ticket, dérivé de cet historique ». `GET /api/tickets` n'existe
+pas encore — le câblage de la liste Jira arrive avec FRONT-7 et ne fait PAS partie de
+BACK-10. Ce qui est livré ici, et documenté pour ce câblage :
+
+- la capacité pure `selectAlreadyAnalyzed(analyses, ticketKeys)` (`lib/analysis-history.ts`) :
+  étant données les entrées du document lu et des clés de tickets, renvoie — dans l'ordre
+  d'entrée — les clés déjà analysées. **L'analyse n'influence jamais l'ordre** (règle produit,
+  ligne 17) : la fonction filtre, elle ne trie pas ;
+- la règle de lecture du magasin : le flag dérive de la PRÉSENCE d'une entrée pour la clé
+  (une entrée = analysé au moins une fois — critère BACK-10 ligne 182 : « un ticket analysé
+  une fois porte le flag à toute réouverture ultérieure »). Aucune logique supplémentaire côté
+  client ne sera nécessaire pour le toggle « Déjà analysés » (FRONT-7).
+
+Le futur `GET /api/tickets` lira le magasin par `getAnalysisHistoryStore()` (partagé) et
+injectera le flag champ par champ, en respectant la discipline du §Jetons. Un coffre
+d'historique illisible doit répondre en `error` (jamais une liste sans flag), et une lecture
+en erreur ne doit pas être rabattue sur « aucune analyse ».
 
 ## Décisions actées le 31/08/2026 (ex-« Questions ouvertes »)
 
