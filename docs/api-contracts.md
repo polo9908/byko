@@ -1,10 +1,12 @@
-# Contrat d'API interne — configuration & test de connexion
+# Contrat d'API interne — configuration & test de connexion, pipeline d'analyse
 
-Ticket : **ARCHI-2**. Types faisant foi : [`lib/types/settings.ts`](../lib/types/settings.ts).
+Tickets : **ARCHI-2** (settings), **ARCHI-4** (analyse). Types faisant foi :
+[`lib/types/settings.ts`](../lib/types/settings.ts) pour la configuration et
+[`lib/types/analysis.ts`](../lib/types/analysis.ts) pour l'analyse.
 
 Ce document décrit le contrat, il ne le définit pas. **En cas d'écart entre ce fichier et
-`lib/types/settings.ts`, c'est le fichier de types qui fait foi** — ce document est alors à
-corriger.
+le fichier de types de la section concernée, c'est le fichier de types qui fait foi** — ce
+document est alors à corriger.
 
 ## Périmètre
 
@@ -477,6 +479,126 @@ au moins une fois »), et il est en tout cas préférable à la destruction qu'i
 n'a été arbitré par aucun ticket. Si l'on veut que cet échec reste visible après rechargement,
 il faudra rendre représentable un `lastError` sur un bloc `connected`, ce qui est une
 modification du contrat et non de BACK-4 seul.
+
+## `POST /api/analysis`
+
+Lance l'analyse d'un ticket et diffuse le résultat en streaming (SSE). C'est le contrat que
+FRONT-9 consomme pour construire l'écran de résultat sans attendre l'implémentation complète
+du pipeline IA (US d'ARCHI-4). Ticket : **ARCHI-4**. Types faisant foi :
+[`lib/types/analysis.ts`](../lib/types/analysis.ts).
+
+**Requête** — `AnalysisRequest`, union discriminée par `ticketSource` :
+
+| `ticketSource` | Corps |
+| --- | --- |
+| `"jira"` | `ticketKey` (requis), `comparisonWindow` (requis), `scopeHint?` |
+| `"manual"` | `ticketText` (requis), `comparisonWindow` (requis), `scopeHint?` |
+
+`comparisonWindow` : les 5 paliers fixes (`"7d" | "30d" | "90d" | "6m" | "12m"`), jamais de
+valeur continue (règle produit, ligne 10 des tickets phase 2).
+
+`scopeHint` : le champ « Epic / composant » du mode manuel (BACK-5, ligne 74). Déclaré commun
+aux deux variantes ; en mode Jira, le périmètre est résolu automatiquement (Linked Issues →
+Epic/Component, BACK-5) et BACK-7 n'en fait pas usage.
+
+Même limite que partout (§Jetons) : la discrimination n'est pas une validation d'entrée.
+BACK-7 valide le corps de requête à la frontière.
+
+**Réponse** — flux SSE, `Content-Type: text/event-stream`. Un événement par ligne, chaque
+événement étant un JSON `AnalysisStreamEvent`. Ordre d'émission :
+
+| `type` | Présence | Charge utile |
+| --- | --- | --- |
+| `"verdict"` | Toujours, premier | `verdict: Verdict` |
+| `"clarification"` | Optionnel (verdict ≠ `"coherent"`) | `message: string` (gabarit ARCHI-5) |
+| `"translation"` | Toujours | `text: string` |
+| `"components"` | Au stade composants | `figmaConnected: boolean`, `components: ComponentRecommendation[]` |
+| `"error"` | Terminal, si le pipeline échoue | `message: string` |
+
+**Le verdict d'abord, c'est le critère d'acceptation.** L'ordre verdict → clarification →
+traduction → composants est la règle produit (ligne 12) ; le verdict arrive en premier pour
+que FRONT-9 puisse l'afficher « dès qu'il arrive, sans attendre la fin du flux complet »
+(ligne 35). Un flux qui émettrait la traduction avant le verdict obligerait le front à
+buffériser le résultat, ce que le design en streaming interdit.
+
+**Événements optionnels.** `clarification` est absent quand le verdict est `"coherent"`
+(ligne 14) — son absence est l'information, FRONT-9 (ligne 265) n'affiche la section que si
+`verdict !== "coherent"`. `components` porte `figmaConnected: boolean` (décision ARCHI-4 n°6).
+`error` est terminal et n'arrive que sur un échec du pipeline (provider IA indisponible, quota,
+etc.) — décision ARCHI-4 n°4.
+
+**Convention d'erreur.** Une requête malformée (discriminant inconnu, champ requis manquant,
+`comparisonWindow` hors paliers) est un `4xx` AVANT le démarrage du flux — pas de stream. Un
+échec du pipeline qui survient APRÈS acceptation de la requête répond `200` (le flux a démarré)
+et se termine par l'événement `error` : même logique que le §« Convention de codes HTTP » — le
+verdict applicatif vit dans le corps (l'événement), pas dans le statut HTTP.
+
+### Décisions assumées avec l'énoncé d'ARCHI-4
+
+**décision ARCHI-4 n°1 — `AnalysisRequest` en union discriminée.** Le ticket (ligne 30) écrit
+un corps plat à champs optionnels (`ticketKey?`, `ticketText?`) ; le contrat resserre pour
+qu'un corps `ticketSource: "jira"` sans `ticketKey` (ou `"manual"` sans `ticketText`) ne soit
+pas représentable. Même logique que la divergence n°1 d'ARCHI-2.
+
+**décision ARCHI-4 n°4 — événement terminal `error`.** L'énoncé ne liste que 4 événements ; le
+contrat ajoute `{ type: "error", message }` pour l'échec du pipeline. Sans lui, une panne du
+provider serait indistinguable d'un flux silencieusement interrompu — le front ne saurait pas
+si le résultat est complet ou tronqué.
+
+**décision ARCHI-4 n°5 — `figmaUrl` optionnel.** Le deep-link Figma n'existe que pour
+`reusable`/`to_verify` (FRONT-10, ligne 288) ; le rendre requis forcerait BACK-8 à fabriquer
+une URL sans cible pour `to_create`. Son absence n'est donc pas une panne.
+
+**décision ARCHI-4 n°6 — `figmaConnected` explicite.** L'énoncé (ligne 30) écrit
+« components (optionnel si Figma absent) » ; le contrat retient que l'événement `components`
+est émis au stade composants avec `figmaConnected: boolean`, y compris à `false` (liste vide).
+C'est BACK-8 (ligne 140 : « liste vide avec un flag `figmaConnected: false` explicite ») et
+FRONT-10 (ligne 289) qui l'exigent : sans ce `false`, le front ne pourrait pas distinguer
+« Figma non connecté » de « aucun composant trouvé », ce que le critère d'acceptation de
+FRONT-10 interdit. La recherche MCP Figma, elle, ne s'exécute bien que si Figma est connecté
+(BACK-8, ligne 145) — c'est le sens de « optionnel si Figma absent » de l'énoncé.
+
+## `GET /api/analysis/scope-count`
+
+Comptage seul, utilisé par le curseur AVANT de lancer l'analyse complète (FRONT-8, ligne 243).
+**Règle centrale : aucun appel IA** — critère d'acceptation BACK-6 (ligne 99) et ARCHI-4
+(ligne 36 : « moins d'une seconde perçue »). Le contrat ne porte donc aucun champ de prompt ni
+de paramètre d'inférence.
+
+**Requête** — `ScopeCountParams`, params de requête :
+
+| Champ | Présence | Rôle |
+| --- | --- | --- |
+| `ticketKey` | Optionnel | Ticket Jira cible (mode Jira) |
+| `scopeHint` | Optionnel | Champ « Epic / composant » (mode manuel, BACK-5) |
+| `comparisonWindow` | Requis | Palier choisi sur le curseur |
+
+**Réponse** — `ScopeCountResponse` :
+
+- `{ status: "success", count: number, costLevel: CostLevel }`
+- `{ status: "error", message }` — `message` requis.
+
+`count` est le « comptage réel » de tickets dans la fenêtre (ligne 11), jamais une estimation
+forfaitaire par palier. La conversion en `costLevel` est faite par BACK-6, les seuils
+centralisés dans une seule constante (ligne 100) — **non définis ici** (non-invention : ils
+relèvent de BACK-6, la proposition de départ étant « à définir avec l'équipe », ligne 94).
+
+**Convention d'erreur.** Un échec applicatif rattrapé (Jira non connecté, instance
+injoignable, résolution de périmètre en échec) répond `200` avec `status: "error"` — pas de
+`4xx` pour un échec métier, conformément au §« Convention de codes HTTP ». Un `4xx` est réservé
+aux requêtes malformées (ex. `comparisonWindow` hors des 5 paliers).
+
+### Décisions assumées avec l'énoncé d'ARCHI-4
+
+**décision ARCHI-4 n°2 — `ScopeCountParams` étend l'énoncé.** Le ticket (ligne 31) écrit
+`{ ticketKey, comparisonWindow }` ; le contrat ajoute `scopeHint?` et rend `ticketKey?`
+optionnel, parce que BACK-6 réutilise la résolution de périmètre de BACK-5 (ligne 93), qui
+couvre le mode manuel.
+
+**décision ARCHI-4 n°3 — enveloppe `status`.** Le ticket écrit `{ count, costLevel }` nu ; le
+contrat aligne sur la convention du projet. Sans variante d'erreur, un échec de résolution du
+périmètre serait indistinguable d'un « 0 ticket » et le badge « 0 tickets · Coût faible »
+mentirait.
 
 ## Décisions actées le 31/08/2026 (ex-« Questions ouvertes »)
 
