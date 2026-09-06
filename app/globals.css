@@ -1,13 +1,30 @@
+/**
+ * Design tokens — V1 (FRONT-1). Moodboard orange / beige, thème clair unique et sobre,
+ * polices légères (Manrope, graisses 400-600). Sera enrichi au fil des écrans.
+ */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+
+  --bg: #faf6ef;
+  --surface: #ffffff;
+  --ink: #2b2419;
+  --ink-muted: #7c7260;
+  --line: #eae1d0;
+  --accent: #e8882f;
+  --accent-strong: #c96d18;
+  --accent-soft: #fdf1e3;
+
+  --radius-lg: 18px;
+  --radius-full: 999px;
+
+  --font-sans: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
 }
 
 html {
@@ -24,17 +41,12 @@ body {
   min-height: 100%;
   display: flex;
   flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--font-sans);
+  font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
 }
 
 a {
@@ -42,8 +54,10 @@ a {
   text-decoration: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
 }
