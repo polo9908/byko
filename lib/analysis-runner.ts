@@ -45,7 +45,7 @@ function notWiredCompletion(): Promise<string> {
 }
 
 function notWiredTicketFetch(): Promise<TicketSnapshot | null> {
-  return Promise.reject(new Error("Récupération du ticket Jira non câblée (BACK-7)."));
+  return Promise.reject(new AnalysisNotWiredError());
 }
 
 /** Dépendances de production actuelles : IA et récupération Jira non câblées (documenté). */
@@ -94,8 +94,16 @@ export async function runAnalysis(
       body: "",
       updatedAt: null,
     };
-  } catch {
-    return [toErrorEvent("Le contenu du ticket n'a pas pu être récupéré (BACK-7, récupération Jira non câblée).")];
+  } catch (error: unknown) {
+    // « Non câblé » (défaut actuel) n'est pas une panne : le message doit le dire. Un vrai
+    // échec du récupérateur (une fois celui-ci câblé) restera un message générique.
+    return [
+      toErrorEvent(
+        error instanceof AnalysisNotWiredError
+          ? "La récupération du ticket Jira n'est pas encore câblée (BACK-7)."
+          : "Le contenu du ticket n'a pas pu être récupéré.",
+      ),
+    ];
   }
 
   const corpus: TicketSnapshot[] = [];
