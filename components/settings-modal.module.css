@@ -1,0 +1,97 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(43, 36, 25, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 50;
+  animation: fade-in 0.18s ease both;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 680px;
+  max-height: min(720px, calc(100dvh - 48px));
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 60px rgba(43, 36, 25, 0.18);
+  animation: rise 0.2s ease both;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+  margin-bottom: 4px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.version {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--ink-muted);
+}
+
+.closeButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink-muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.closeButton:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.dialogBody {
+  overflow-y: auto;
+  padding: 20px 24px 28px;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

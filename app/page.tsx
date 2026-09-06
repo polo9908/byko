@@ -19,14 +19,15 @@ import styles from "./home.module.css";
  * - écran Récap (FRONT-5), dont le bouton final marque l'onboarding terminé (avenant
  *   BACK-4) — jamais réaffiché ensuite ;
  * - zone principale post-onboarding (FRONT-6) : en-tête d'application avec accès aux
- *   Paramètres (mêmes blocs que le wizard, réutilisés) et état « rien configuré » ;
+ *   Paramètres — ouverts en modale (FRONT-11/12) par-dessus le contenu — et état
+ *   « rien configuré » ;
  * - message d'erreur du backend si la lecture échoue — jamais confondu avec un état vide.
  */
 
 const UNREADABLE_MESSAGE =
   "Impossible de lire l'état de la configuration. Réessayez dans un instant.";
 
-type Phase = "loading" | "intro" | "connexions" | "recap" | "main" | "settings" | "error";
+type Phase = "loading" | "intro" | "connexions" | "recap" | "main" | "error";
 
 async function fetchGate(): Promise<HomeGate> {
   try {
@@ -90,11 +91,6 @@ export default function Home() {
         <RecapScreen settings={recapSettings} onDone={() => setPhase("main")} />
       );
 
-    case "settings":
-      return (
-        <ConnexionsScreen variant="params" onBack={() => setPhase("main")} />
-      );
-
     case "error":
       return (
         <main className={styles.screen}>
@@ -114,6 +110,6 @@ export default function Home() {
       );
 
     default:
-      return <HomeArea onOpenSettings={() => setPhase("settings")} />;
+      return <HomeArea />;
   }
 }

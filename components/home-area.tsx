@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { SettingsModal } from "@/components/settings-modal";
 import type { GetSettingsResponse, SettingsState } from "@/lib/types/settings";
 import styles from "./home-area.module.css";
 
@@ -13,15 +14,25 @@ import styles from "./home-area.module.css";
  * connectés, un message visible invite à aller dans Paramètres (un ticket pourra être collé
  * manuellement sans connexion, cf. FRONT-7). L'état Figma y est aussi lu, pour préparer
  * l'emplacement du message « composants » de la phase suivante.
+ *
+ * Le bouton Paramètres ouvre la modale (FRONT-11/12) par-dessus ce contenu, qui reste monté
+ * et inchangé derrière l'overlay.
  */
 
 const UNREADABLE_MESSAGE =
   "Impossible de lire l'état de la configuration. Réessayez dans un instant.";
 
-export function HomeArea({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function HomeArea() {
   const [attempt, setAttempt] = useState(0);
+  const [modalOpen, setModalOpen] = useState(false);
   const [settings, setSettings] = useState<SettingsState | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const closeSettings = () => {
+    setModalOpen(false);
+    // Les connexions peuvent avoir changé dans la modale : on relit l'état réel.
+    setAttempt((current) => current + 1);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -63,7 +74,11 @@ export function HomeArea({ onOpenSettings }: { onOpenSettings: () => void }) {
           </span>
           <span className={styles.brandName}>byko</span>
         </div>
-        <button type="button" className={styles.settingsButton} onClick={onOpenSettings}>
+        <button
+          type="button"
+          className={styles.settingsButton}
+          onClick={() => setModalOpen(true)}
+        >
           Paramètres
         </button>
       </header>
@@ -97,7 +112,11 @@ export function HomeArea({ onOpenSettings }: { onOpenSettings: () => void }) {
                 connecté.
               </p>
             )}
-            <button type="button" className={styles.primaryButton} onClick={onOpenSettings}>
+            <button
+              type="button"
+              className={styles.primaryButton}
+              onClick={() => setModalOpen(true)}
+            >
               Ouvrir les Paramètres
             </button>
           </div>
@@ -112,6 +131,8 @@ export function HomeArea({ onOpenSettings }: { onOpenSettings: () => void }) {
           </div>
         )}
       </div>
+
+      {modalOpen && <SettingsModal onClose={closeSettings} />}
     </main>
   );
 }
