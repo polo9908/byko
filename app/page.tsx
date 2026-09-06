@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { ConnexionsScreen } from "@/components/connexions-screen";
 import { IntroScreen } from "@/components/intro-screen";
 import { resolveHomeView, type HomeGate } from "@/lib/home-gate";
 import type { GetSettingsResponse } from "@/lib/types/settings";
@@ -13,8 +14,8 @@ import styles from "./home.module.css";
  * Orchestrateur minimal : au montage, lit l'état réel de la configuration
  * (`GET /api/settings`) et aiguille la vue d'accueil (cf. `lib/home-gate.ts`) :
  * - Intro au premier lancement (marqueur `onboardingCompleted` à `false`) ;
- * - écran Connexions après la barre de progression de l'Intro (squelette : implémenté par
- *   FRONT-2) ;
+ * - écran Connexions (FRONT-2, accordéon des 3 blocs) après la barre de progression de
+ *   l'Intro ;
  * - espace principal si la configuration initiale est déjà terminée (FRONT-7 à venir) ;
  * - message d'erreur du backend si la lecture échoue — jamais confondu avec un état vide.
  */
@@ -69,18 +70,7 @@ export default function Home() {
   }
 
   if (view === "intro") {
-    return (
-      <main className={styles.screen}>
-        <div className={styles.stack}>
-          <p className={styles.eyebrow}>Configuration</p>
-          <h1 className={styles.title}>Connexions</h1>
-          <p className={styles.note}>
-            Vous connecterez ici Jira, Figma et votre modèle IA. Cet écran sera construit
-            par le prochain lot.
-          </p>
-        </div>
-      </main>
-    );
+    return <ConnexionsScreen />;
   }
 
   if (view === "main") {
