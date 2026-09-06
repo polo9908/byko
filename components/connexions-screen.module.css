@@ -171,6 +171,64 @@
   border-color: var(--accent);
 }
 
+.inputError {
+  border-color: #c2402f;
+}
+
+.inputBusy {
+  border-color: var(--accent);
+}
+
+.attemptRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.attemptText {
+  color: var(--ink-muted);
+}
+
+.attemptOk {
+  color: #2f6b3a;
+}
+
+.attemptError {
+  color: #b23a30;
+}
+
+.attemptIconOk {
+  color: #2f6b3a;
+  font-weight: 600;
+  flex: none;
+}
+
+.attemptIconError {
+  color: #b23a30;
+  font-weight: 600;
+  flex: none;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  flex: none;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .skipLink {
   align-self: flex-start;
   font: inherit;

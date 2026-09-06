@@ -10,28 +10,30 @@ import type {
   ProviderId,
   SaveSettingsResponse,
   SettingsState,
+  TestConnectionResponse,
 } from "@/lib/types/settings";
 import styles from "./connexions-screen.module.css";
 
 /**
- * FRONT-2 — écran Connexions : structure accordéon + 3 blocs (Jira, Figma, Modèle IA).
+ * FRONT-2/FRONT-3 — écran Connexions : accordéon des 3 blocs + test de connexion au blur.
  *
- * Périmètre de ce ticket (docs/tickets/phase-1-configuration.md) : un seul bloc développé à
- * la fois, les autres repliés en ligne compacte (icône + nom + statut + chevron) ; les blocs
- * déjà traités (`connected`, ou `skipped` pour Figma) démarrent repliés et le premier bloc
- * non traité s'ouvre ; champs pré-remplis depuis l'état réel (`GET /api/settings`) quand la
- * connexion existe (URL d'instance, e-mail, provider — jamais le jeton, non stocké) ; lien
- * dynamique « Créer jeton [Nom] » sous le champ jeton du bloc IA (libellé ET URL depuis
- * `lib/providers-links.ts`, ARCHI-2b) ; Figma porte « Passer cette étape, configurable plus
- * tard dans Paramètres » — jamais le mot « optionnel ».
+ * FRONT-2 (structure) : un seul bloc développé à la fois ; les blocs déjà traités
+ * (`connected`, ou `skipped` pour Figma) démarrent repliés, le premier non traité s'ouvre ;
+ * champs pré-remplis depuis `GET /api/settings` (jamais le jeton, non stocké) ; liens de
+ * création de jeton (Jira : compte Atlassian ; IA : dynamique par provider, ARCHI-2b) ;
+ * Figma porte « Passer cette étape » — jamais le mot « optionnel ».
  *
- * Le test de connexion au blur et la sauvegarde au fil de l'eau arrivent avec FRONT-3 ; le
- * bandeau de blocage et « Terminer » avec FRONT-4. Ici, l'état d'un bloc ne change que par
- * « Passer cette étape » (Figma), qui appelle l'écriture `skipped` du contrat BACK-4.
+ * FRONT-3 (test en direct) : dès que le champ jeton perd le focus (`onBlur`), la connexion
+ * est testée via `POST /api/settings/test-connection` (BACK-1/2/3) — aucun bouton
+ * « Tester ». Trois états visuels distincts : en cours (spinner), succès (vert, l'écran
+ * enchaîne sur le bloc suivant après persistance via `POST /api/settings`), erreur (rouge,
+ * croix + message exact renvoyé par le backend — jamais un texte générique).
  */
 
 const UNREADABLE_MESSAGE =
   "Impossible de lire l'état de la configuration. Réessayez dans un instant.";
+const TEST_UNREACHABLE_MESSAGE =
+  "Le test n'a pas pu joindre le serveur. Réessayez dans un instant.";
 
 interface BlockFormValues {
   jira: { instanceUrl: string; email: string; apiToken: string };
@@ -63,6 +65,22 @@ const BLOCK_META: ReadonlyArray<{
  */
 const JIRA_TOKEN_CREATE_URL = "https://id.atlassian.com/manage-profile/security/api-tokens";
 const JIRA_TOKEN_CREATE_LABEL = "Créer un jeton API Jira";
+
+type AttemptStatus = "idle" | "testing" | "success" | "error";
+
+interface Attempt {
+  status: AttemptStatus;
+  message?: string;
+}
+
+const IDLE_ATTEMPT: Attempt = { status: "idle" };
+
+/** Métadonnées non secrètes du bloc, à re-persister en cas de succès. */
+interface ConnectedMeta {
+  instanceUrl?: string;
+  email?: string;
+  provider?: ProviderId;
+}
 
 function valuesFromSettings(settings: SettingsState): BlockFormValues {
   return {
@@ -99,6 +117,11 @@ export function ConnexionsScreen() {
   const [values, setValues] = useState<BlockFormValues>(EMPTY_VALUES);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [skipping, setSkipping] = useState(false);
+  const [tests, setTests] = useState<Record<ConnectionBlockId, Attempt>>({
+    jira: IDLE_ATTEMPT,
+    figma: IDLE_ATTEMPT,
+    ai: IDLE_ATTEMPT,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -144,6 +167,21 @@ export function ConnexionsScreen() {
     setExpanded((current) => (current === block ? null : block));
   };
 
+  const clearTest = (block: ConnectionBlockId) => {
+    setTests((current) => ({ ...current, [block]: IDLE_ATTEMPT }));
+  };
+
+  const patchValues = <B extends ConnectionBlockId>(
+    block: B,
+    patch: Partial<BlockFormValues[B]>,
+  ) => {
+    setValues((current) => ({
+      ...current,
+      [block]: { ...current[block], ...patch },
+    }));
+    clearTest(block);
+  };
+
   const skipFigma = async () => {
     setSkipping(true);
     try {
@@ -160,12 +198,118 @@ export function ConnexionsScreen() {
       const next: SettingsState = { ...settings, figma: { status: "skipped" } };
       setSettings(next);
       setValues((current) => ({ ...current, figma: { apiToken: "" } }));
+      clearTest("figma");
       setExpanded(firstBlockToConfigure(next));
     } catch {
       setErrorMessage(UNREADABLE_MESSAGE);
     } finally {
       setSkipping(false);
     }
+  };
+
+  /**
+   * Test au blur d'un bloc : `POST /api/settings/test-connection`, puis — si succès —
+   * persistance via `POST /api/settings` avant d'enchaîner sur le bloc suivant.
+   */
+  const performTest = async (
+    block: ConnectionBlockId,
+    credentials: unknown,
+    apiToken: string,
+    meta: ConnectedMeta,
+  ) => {
+    if (tests[block].status === "testing") return;
+    if (block === "ai" && meta.provider === undefined) {
+      setTests((t) => ({
+        ...t,
+        ai: { status: "error", message: "Choisissez d'abord un fournisseur de modèle." },
+      }));
+      return;
+    }
+    if (!apiToken.trim()) return;
+
+    setTests((t) => ({ ...t, [block]: { status: "testing" } }));
+
+    try {
+      const response = await fetch("/api/settings/test-connection", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block, credentials }),
+      });
+      const body: unknown = await response.json();
+      if (!response.ok) {
+        const message =
+          typeof body === "object" &&
+          body !== null &&
+          typeof (body as { message?: unknown }).message === "string"
+            ? (body as { message: string }).message
+            : TEST_UNREACHABLE_MESSAGE;
+        setTests((t) => ({ ...t, [block]: { status: "error", message } }));
+        return;
+      }
+      const test = body as TestConnectionResponse;
+      if (test.status === "error" || test.block !== block) {
+        setTests((t) => ({
+          ...t,
+          [block]: {
+            status: "error",
+            message: test.status === "error" ? test.message : TEST_UNREACHABLE_MESSAGE,
+          },
+        }));
+        return;
+      }
+
+      const saveResponse = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block, credentials }),
+      });
+      const saveBody = (await saveResponse.json()) as SaveSettingsResponse;
+      if (saveBody.status !== "success") {
+        setTests((t) => ({
+          ...t,
+          [block]: { status: "error", message: saveBody.message },
+        }));
+        return;
+      }
+
+      const nextSettings: SettingsState = {
+        ...settings,
+        [block]: buildConnectedState(block, test, meta),
+      };
+      setSettings(nextSettings);
+      setTests((t) => ({ ...t, [block]: { status: "success" } }));
+      setExpanded(firstBlockToConfigure(nextSettings));
+    } catch {
+      setTests((t) => ({
+        ...t,
+        [block]: { status: "error", message: TEST_UNREACHABLE_MESSAGE },
+      }));
+    }
+  };
+
+  const runJiraTest = () => {
+    const { instanceUrl, email, apiToken } = values.jira;
+    void performTest(
+      "jira",
+      { instanceUrl, email, apiToken },
+      apiToken,
+      { instanceUrl, email },
+    );
+  };
+
+  const runFigmaTest = () => {
+    const { apiToken } = values.figma;
+    void performTest("figma", { apiToken }, apiToken, {});
+  };
+
+  const runAiTest = () => {
+    const { provider, apiToken } = values.ai;
+    void performTest(
+      "ai",
+      provider === "" ? {} : { provider, apiToken },
+      apiToken,
+      { provider: provider === "" ? undefined : provider },
+    );
   };
 
   return (
@@ -184,6 +328,7 @@ export function ConnexionsScreen() {
             const state = settings[id];
             const isOpen = expanded === id;
             const done = state.status === "connected" || state.status === "skipped";
+            const test = tests[id];
             return (
               <section key={id} className={done && !isOpen ? styles.blockDone : styles.block}>
                 <button
@@ -207,39 +352,43 @@ export function ConnexionsScreen() {
                 {isOpen && (
                   <div className={styles.panel}>
                     {id === "jira" && (
-                      <JiraForm
-                        values={values.jira}
-                        onChange={(jira) => setValues((current) => ({ ...current, jira }))}
-                      />
+                      <>
+                        <JiraForm
+                          values={values.jira}
+                          tokenStatus={test.status}
+                          onChange={(patch) => patchValues("jira", patch)}
+                          onTokenBlur={runJiraTest}
+                        />
+                        <AttemptFeedback attempt={test} />
+                      </>
                     )}
                     {id === "figma" && (
-                      <FigmaForm
-                        apiToken={values.figma.apiToken}
-                        skipped={state.status === "skipped"}
-                        skipping={skipping}
-                        onTokenChange={(apiToken) =>
-                          setValues((current) => ({ ...current, figma: { apiToken } }))
-                        }
-                        onSkip={() => void skipFigma()}
-                      />
+                      <>
+                        <FigmaForm
+                          apiToken={values.figma.apiToken}
+                          skipped={state.status === "skipped"}
+                          skipping={skipping}
+                          testing={test.status === "testing"}
+                          tokenStatus={test.status}
+                          onTokenChange={(apiToken) => patchValues("figma", { apiToken })}
+                          onTokenBlur={runFigmaTest}
+                          onSkip={() => void skipFigma()}
+                        />
+                        <AttemptFeedback attempt={test} />
+                      </>
                     )}
                     {id === "ai" && (
-                      <AiForm
-                        provider={values.ai.provider}
-                        apiToken={values.ai.apiToken}
-                        onProviderChange={(provider) =>
-                          setValues((current) => ({
-                            ...current,
-                            ai: { ...current.ai, provider },
-                          }))
-                        }
-                        onTokenChange={(apiToken) =>
-                          setValues((current) => ({
-                            ...current,
-                            ai: { ...current.ai, apiToken },
-                          }))
-                        }
-                      />
+                      <>
+                        <AiForm
+                          provider={values.ai.provider}
+                          apiToken={values.ai.apiToken}
+                          tokenStatus={test.status}
+                          onProviderChange={(provider) => patchValues("ai", { provider })}
+                          onTokenChange={(apiToken) => patchValues("ai", { apiToken })}
+                          onTokenBlur={runAiTest}
+                        />
+                        <AttemptFeedback attempt={test} />
+                      </>
                     )}
                   </div>
                 )}
@@ -250,6 +399,42 @@ export function ConnexionsScreen() {
       </div>
     </main>
   );
+}
+
+/**
+ * État persisté du bloc après un test réussi. Le jeton n'y figure jamais (ARCHI-3/BACK-4) ;
+ * seules les métadonnées non secrètes (URL, e-mail, provider, nom de compte) sont stockées,
+ * telles que confirmées par la réponse du test.
+ */
+function buildConnectedState(
+  block: ConnectionBlockId,
+  test: TestConnectionResponse,
+  meta: ConnectedMeta,
+): SettingsState[ConnectionBlockId] {
+  const accountName =
+    test.block === "jira" && test.status === "success"
+      ? test.account.accountName
+      : test.block === "figma" && test.status === "success"
+        ? test.account?.accountName
+        : undefined;
+
+  if (block === "jira") {
+    return {
+      status: "connected",
+      instanceUrl: meta.instanceUrl ?? "",
+      email: meta.email ?? "",
+      account: { accountName: accountName ?? meta.instanceUrl ?? "" },
+    };
+  }
+  if (block === "figma") {
+    return accountName
+      ? { status: "connected", account: { accountName } }
+      : { status: "connected" };
+  }
+  if (block === "ai") {
+    return { status: "connected", provider: meta.provider as ProviderId };
+  }
+  return { status: "not_connected" };
 }
 
 function StatusSummary({ state }: { state: SettingsState[ConnectionBlockId] }) {
@@ -289,15 +474,53 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
+function tokenInputClass(status: AttemptStatus): string {
+  if (status === "error") return styles.inputError;
+  if (status === "testing") return styles.inputBusy;
+  return styles.input;
+}
+
+function AttemptFeedback({ attempt }: { attempt: Attempt }) {
+  if (attempt.status === "idle") return null;
+  if (attempt.status === "testing") {
+    return (
+      <p className={styles.attemptRow} role="status">
+        <span className={styles.spinner} aria-hidden="true" />
+        <span className={styles.attemptText}>Test de la connexion en cours…</span>
+      </p>
+    );
+  }
+  if (attempt.status === "error") {
+    return (
+      <p className={styles.attemptRow} role="alert">
+        <span className={styles.attemptIconError} aria-hidden="true">
+          ✕
+        </span>
+        <span className={styles.attemptError}>{attempt.message}</span>
+      </p>
+    );
+  }
+  return (
+    <p className={styles.attemptRow} role="status">
+      <span className={styles.attemptIconOk} aria-hidden="true">
+        ✓
+      </span>
+      <span className={styles.attemptOk}>Connexion validée.</span>
+    </p>
+  );
+}
+
 function JiraForm({
   values,
+  tokenStatus,
   onChange,
+  onTokenBlur,
 }: {
   values: { instanceUrl: string; email: string; apiToken: string };
-  onChange: (values: { instanceUrl: string; email: string; apiToken: string }) => void;
+  tokenStatus: AttemptStatus;
+  onChange: (patch: Partial<{ instanceUrl: string; email: string; apiToken: string }>) => void;
+  onTokenBlur: () => void;
 }) {
-  const set = <K extends keyof typeof values>(key: K, value: (typeof values)[K]) =>
-    onChange({ ...values, [key]: value });
   return (
     <div className={styles.form}>
       <Field label="URL de l'instance">
@@ -306,7 +529,7 @@ function JiraForm({
           className={styles.input}
           value={values.instanceUrl}
           placeholder="https://votre-domaine.atlassian.net"
-          onChange={(event) => set("instanceUrl", event.target.value)}
+          onChange={(event) => onChange({ instanceUrl: event.target.value })}
         />
       </Field>
       <Field label="Adresse e-mail">
@@ -315,15 +538,16 @@ function JiraForm({
           className={styles.input}
           value={values.email}
           placeholder="vous@entreprise.fr"
-          onChange={(event) => set("email", event.target.value)}
+          onChange={(event) => onChange({ email: event.target.value })}
         />
       </Field>
       <Field label="Jeton API">
         <input
           type="password"
-          className={styles.input}
+          className={tokenInputClass(tokenStatus)}
           value={values.apiToken}
-          onChange={(event) => set("apiToken", event.target.value)}
+          onChange={(event) => onChange({ apiToken: event.target.value })}
+          onBlur={onTokenBlur}
         />
       </Field>
       <a
@@ -342,13 +566,19 @@ function FigmaForm({
   apiToken,
   skipped,
   skipping,
+  testing,
+  tokenStatus,
   onTokenChange,
+  onTokenBlur,
   onSkip,
 }: {
   apiToken: string;
   skipped: boolean;
   skipping: boolean;
+  testing: boolean;
+  tokenStatus: AttemptStatus;
   onTokenChange: (token: string) => void;
+  onTokenBlur: () => void;
   onSkip: () => void;
 }) {
   return (
@@ -356,9 +586,10 @@ function FigmaForm({
       <Field label="Jeton">
         <input
           type="password"
-          className={styles.input}
+          className={tokenInputClass(tokenStatus)}
           value={apiToken}
           onChange={(event) => onTokenChange(event.target.value)}
+          onBlur={onTokenBlur}
         />
       </Field>
       {!skipped && (
@@ -366,11 +597,9 @@ function FigmaForm({
           type="button"
           className={styles.skipLink}
           onClick={onSkip}
-          disabled={skipping}
+          disabled={skipping || testing}
         >
-          {skipping
-            ? "Passage…"
-            : "Passer cette étape, configurable plus tard dans Paramètres"}
+          {skipping ? "Passage…" : "Passer cette étape, configurable plus tard dans Paramètres"}
         </button>
       )}
     </div>
@@ -380,13 +609,17 @@ function FigmaForm({
 function AiForm({
   provider,
   apiToken,
+  tokenStatus,
   onProviderChange,
   onTokenChange,
+  onTokenBlur,
 }: {
   provider: ProviderId | "";
   apiToken: string;
+  tokenStatus: AttemptStatus;
   onProviderChange: (provider: ProviderId) => void;
   onTokenChange: (token: string) => void;
+  onTokenBlur: () => void;
 }) {
   return (
     <div className={styles.form}>
@@ -411,9 +644,10 @@ function AiForm({
           <Field label="Jeton">
             <input
               type="password"
-              className={styles.input}
+              className={tokenInputClass(tokenStatus)}
               value={apiToken}
               onChange={(event) => onTokenChange(event.target.value)}
+              onBlur={onTokenBlur}
             />
           </Field>
           <a
