@@ -79,10 +79,24 @@ export function parseSaveSettingsRequest(body: unknown): ParsedSaveSettingsReque
   }
 
   const block = body.block;
+
+  // Avenant d'onboarding (décision n°2 de `docs/api-contracts.md`) : transition à sens
+  // unique vers `true`. Seul le littéral `true` est accepté — un `false` explicite n'a pas de
+  // sens défini, et aucune remise à zéro n'existe dans cette phase.
+  if (block === "onboarding") {
+    if (body.onboardingCompleted === true) {
+      return { ok: true, value: { block: "onboarding", onboardingCompleted: true } };
+    }
+    return {
+      ok: false,
+      message: 'Le bloc "onboarding" attend "onboardingCompleted" à true.',
+    };
+  }
+
   if (block !== "jira" && block !== "figma" && block !== "ai") {
     return {
       ok: false,
-      message: 'Le champ "block" doit valoir "jira", "figma" ou "ai".',
+      message: 'Le champ "block" doit valoir "jira", "figma", "ai" ou "onboarding".',
     };
   }
 

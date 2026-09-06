@@ -40,6 +40,7 @@ describe("encodeSettingsDocument / decodeSettingsDocument — round-trip", () =>
         provider: "anthropic",
         apiToken: createSecret("sk-ant-jeton-de-test"),
       },
+      onboardingCompleted: true,
     };
 
     const encoded = encodeSettingsDocument(document);
@@ -50,6 +51,7 @@ describe("encodeSettingsDocument / decodeSettingsDocument — round-trip", () =>
     assert.equal(decoded.value.jira.status, "connected");
     assert.equal(decoded.value.figma.status, "connected");
     assert.equal(decoded.value.ai.status, "connected");
+    assert.equal(decoded.value.onboardingCompleted, true);
     if (decoded.value.jira.status === "connected") {
       assert.equal(revealSecret(decoded.value.jira.apiToken), "jira-jeton-de-test");
       assert.equal(decoded.value.jira.account.accountName, "Jane Doe");
@@ -119,6 +121,31 @@ describe("encodeSettingsDocument / decodeSettingsDocument — round-trip", () =>
     assert.equal(result.ok, true);
     if (!result.ok) return;
     assert.equal(result.value.figma.status, "skipped");
+  });
+
+  test("onboardingCompleted absent se décode `false`, jamais inventé à `true` (rétrocompatibilité)", () => {
+    // Un coffre écrit AVANT l'avenant d'onboarding (même schemaVersion 1) n'a pas le champ :
+    // il doit rester lisible, avec l'onboarding non confirmé.
+    const result = decodeSettingsDocument({
+      schemaVersion: 1,
+      jira: { status: "not_connected" },
+      figma: { status: "not_connected" },
+      ai: { status: "not_connected" },
+    });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.equal(result.value.onboardingCompleted, false);
+  });
+
+  test("onboardingCompleted non booléen -> refusé, jamais rabattu sur une valeur de repli", () => {
+    const result = decodeSettingsDocument({
+      schemaVersion: 1,
+      jira: { status: "not_connected" },
+      figma: { status: "not_connected" },
+      ai: { status: "not_connected" },
+      onboardingCompleted: "oui",
+    });
+    assert.equal(result.ok, false);
   });
 });
 

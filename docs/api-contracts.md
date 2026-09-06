@@ -284,6 +284,21 @@ qui rend les métadonnées non représentables quand la connexion n'est pas éta
 donc aucun champ nullable à défendre côté front. Symétriquement, `lastError` n'est atteignable
 qu'après avoir testé `status === "not_connected"` (§ci-dessous).
 
+### Marqueur « onboarding terminé » (avenant BACK-4, acté le 06/09/2026)
+
+`SettingsState` porte aussi un booléen `onboardingCompleted`, en plus des trois blocs. C'est le
+marqueur explicite de « configuration initiale terminée » décidé le 31/08/2026 (décision n°2,
+§ci-dessous). Il n'est **pas** dérivable des trois statuts : un utilisateur ayant terminé le
+wizard puis dont le jeton IA expire doit rester sorti de l'onboarding, pas retomber sur
+l'écran d'intro (FRONT-1, ligne 200).
+
+Il vaut `false` tant que FRONT-5 n'a pas écrit la variante d'onboarding de
+`POST /api/settings` (§ci-dessous), et **aucune opération ne le ramène à `false`** — la
+transition est à sens unique, une remise à zéro de la configuration étant hors périmètre
+(phase 3). Rétrocompatibilité : un coffre écrit avant l'avenant (donc sans le champ) se lit
+`false` — jamais `true` — car une configuration jamais marquée « terminée » n'a pas eu son
+onboarding confirmé.
+
 ### Cause du dernier échec, persistée (acté le 31/08/2026)
 
 `lastError` porte la dernière erreur connue du bloc : `message` requis, `code` optionnel,
@@ -382,9 +397,16 @@ Sauvegarde **un seul bloc par requête** (BACK-4 : la sauvegarde est indépendan
 | `"jira"` | `{ credentials: JiraCredentials }` |
 | `"figma"` | `{ credentials: FigmaCredentials }` **ou** `{ skipped: true }` |
 | `"ai"` | `{ credentials: AiCredentials }` |
+| `"onboarding"` | `{ onboardingCompleted: true }` |
 
 Le littéral `true` est volontaire : un `skipped: false` n'aurait pas de sens défini. C'est le
 seul canal permettant à BACK-4 de distinguer `skipped` de `not_connected` pour Figma.
+
+Même logique pour `onboardingCompleted: true` (avenant d'onboarding, décision n°2) :
+l'onboarding est une transition à sens unique (`false` → `true`), et un `false` explicite
+n'aurait pas de sens défini — aucune remise à zéro de la configuration n'existe dans cette
+phase. La variante d'onboarding ne porte ni `credentials` ni `skipped` : elle ne touche à
+aucun jeton, elle recopie les trois blocs tels quels.
 
 **Réponse** — `SaveSettingsResponse` : `{ block, status: "success" }` ou
 `{ block, status: "error", message }`. Aucun ticket ne spécifie cette réponse ; la forme
@@ -394,9 +416,10 @@ reprend le vocabulaire déjà en place plutôt que d'en introduire un nouveau.
 chaque connexion validée immédiatement, donc dans le flux du test au blur — deux sauvegardes
 peuvent être en vol et l'erreur de Figma s'afficher sur le bloc Jira.
 
-**Limite à connaître :** `block` y est typé `ConnectionBlockId`, et non lié par générique au
-bloc de la requête comme l'est `TestConnectionResponseFor<…>`. Le typage n'oblige donc pas la
-réponse à faire écho au bon bloc — c'est une discipline d'implémentation à respecter dans
+**Limite à connaître :** `block` y est typé `SaveSettingsBlockId`
+(`ConnectionBlockId | "onboarding"`, depuis l'avenant d'onboarding), et non lié par générique
+au bloc de la requête comme l'est `TestConnectionResponseFor<…>`. Le typage n'oblige donc pas
+la réponse à faire écho au bon bloc — c'est une discipline d'implémentation à respecter dans
 BACK-4. Ce choix évite d'exporter un helper générique qu'aucun ticket ne demande ; il est
 réversible en quelques lignes si le besoin se confirme.
 
@@ -506,9 +529,12 @@ de contrat (n°7).
      techniquement un développeur de l'écrire, alors que la décision ci-dessus établit qu'elle
      est fausse (jeton IA expiré → retour sur l'écran d'intro). C'est un piège qui se referme
      en silence, à nommer explicitement dans l'avenant.
-   *Reste à faire :* **BACK-4** (avenant, lecture **et** écriture), puis mise à jour de ce
-   contrat et du fichier de types au même moment. **FRONT-1** (ligne 204), **FRONT-5**
-   (ligne 293) et **FRONT-6** (ligne 307) dépendent de cette levée.
+   *Fait (avenant BACK-4, 06/09/2026) :* le marqueur est exposé par `GET /api/settings`
+   (`SettingsState.onboardingCompleted`) et écrit par `POST /api/settings`
+   (`{ block: "onboarding", onboardingCompleted: true }`), avec rétrocompatibilité (`false`
+   pour un coffre écrit avant l'avenant). Reste à faire côté consommation : **FRONT-1**
+   (ligne 204) lit le marqueur, **FRONT-5** (ligne 293) l'écrit au clic du bouton final,
+   **FRONT-6** (ligne 307) s'appuie dessus pour le bouton compte « hors wizard ».
 
 3. **La cause du dernier échec est persistée et exposée par `GET /api/settings`.**
    *Décidé :* chaque bloc expose `lastError`, typé avec le code d'erreur de son bloc — p. ex.

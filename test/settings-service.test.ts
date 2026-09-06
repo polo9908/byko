@@ -611,3 +611,48 @@ describe("BACK-4 — revealSecret() apparaît uniquement côté persistance (enc
     });
   });
 });
+
+describe("BACK-4 — avenant onboarding : marqueur « configuration terminée »", () => {
+  test("sauvegarder l'onboarding passe `onboardingCompleted` à true sans dégrader les blocs", async () => {
+    await withTempVault(async (location) => {
+      const store = createSettingsStore(location);
+
+      // Un bloc déjà validé, pour vérifier que marquer l'onboarding terminé ne le défait pas.
+      const jira = parseSaveSettingsRequest({
+        block: "jira",
+        credentials: { instanceUrl: JIRA_INSTANCE, email: JIRA_EMAIL, apiToken: JIRA_TOKEN },
+      });
+      assert.equal(jira.ok, true);
+      if (!jira.ok) return;
+      await withStubbedFetch(
+        () => Promise.resolve(jiraSuccessResponse()),
+        async () => {
+          assert.deepEqual(await applySaveSettingsRequest(jira.value, store), {
+            block: "jira",
+            status: "success",
+          });
+        },
+      );
+
+      const onboarding = parseSaveSettingsRequest({
+        block: "onboarding",
+        onboardingCompleted: true,
+      });
+      assert.equal(onboarding.ok, true);
+      if (!onboarding.ok) return;
+      // Aucun appel réseau : le marqueur n'a pas de connecteur à tester.
+      assert.deepEqual(await applySaveSettingsRequest(onboarding.value, store), {
+        block: "onboarding",
+        status: "success",
+      });
+
+      const settings = await readSettings(store);
+      assert.equal(settings.status, "success");
+      if (settings.status !== "success") return;
+      assert.equal(settings.settings.onboardingCompleted, true);
+      assert.equal(settings.settings.jira.status, "connected");
+      assert.equal(settings.settings.figma.status, "not_connected");
+      assert.equal(settings.settings.ai.status, "not_connected");
+    });
+  });
+});

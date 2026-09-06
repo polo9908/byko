@@ -14,11 +14,13 @@
  * des littéraux frais. `revealSecret()` n'apparaît QUE dans ces fonctions `encode…`, jamais
  * ailleurs dans ce fichier ni dans les modules qui l'appellent.
  *
- * Extensibilité (avenant futur, p. ex. marqueur d'onboarding — hors périmètre de BACK-4,
- * voir `docs/api-contracts.md` décision n°2) : le document porte un `schemaVersion` explicite.
- * Un coffre écrit aujourd'hui reste lisible par un `decode()` futur qui accepterait la même
- * version et ajouterait un champ optionnel ; ce fichier n'a pas à anticiper la forme de ce
- * champ, seulement à ne pas la rendre irreprésentable.
+ * Extensibilité : le document porte un `schemaVersion` explicite. L'avenant d'onboarding
+ * (`onboardingCompleted`, décision n°2 de `docs/api-contracts.md`) est le PREMIER à s'appuyer
+ * dessus, sans changer de version : un coffre écrit avant l'avenant (donc sans le champ) reste
+ * lisible — `onboardingCompleted` est absent du disque, `decode()` le pose à `false`, car une
+ * configuration jamais marquée « terminée » est une configuration dont l'onboarding n'a pas
+ * été confirmé. Un champ présent mais non booléen, lui, est un coffre altéré : refusé comme le
+ * reste du document.
  */
 
 import { createSecret, revealSecret, type Secret } from "@/lib/secret";
@@ -85,15 +87,17 @@ export interface PersistedSettingsDocument {
   readonly jira: PersistedJiraState;
   readonly figma: PersistedFigmaState;
   readonly ai: PersistedAiState;
+  readonly onboardingCompleted: boolean;
 }
 
-/** Premier lancement, ou bloc jamais encore renseigné : les trois blocs `not_connected`. */
+/** Premier lancement : les trois blocs `not_connected`, onboarding non terminé. */
 export function emptySettingsDocument(): PersistedSettingsDocument {
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     jira: { status: "not_connected" },
     figma: { status: "not_connected" },
     ai: { status: "not_connected" },
+    onboardingCompleted: false,
   };
 }
 
@@ -161,6 +165,7 @@ export function encodeSettingsDocument(value: PersistedSettingsDocument): unknow
     jira: encodeJira(value.jira),
     figma: encodeFigma(value.figma),
     ai: encodeAi(value.ai),
+    onboardingCompleted: value.onboardingCompleted,
   };
 }
 
@@ -351,6 +356,21 @@ function decodeAi(raw: unknown): PersistedAiState | null {
   return null;
 }
 
+/**
+ * `onboardingCompleted` absent est une valeur légitime, pas un défaut : c'est un coffre écrit
+ * AVANT l'avenant d'onboarding (même `schemaVersion`), donc une configuration dont l'onboarding
+ * n'a jamais été confirmé. Il se lit `false`, jamais inventé à `true`.
+ *
+ * Présent mais non booléen, en revanche, c'est un coffre altéré : `null` est refusé, comme
+ * tout le reste du document — on n'invente pas une valeur de repli.
+ */
+function readOnboardingCompleted(value: unknown): boolean | null {
+  if (value === undefined) {
+    return false;
+  }
+  return typeof value === "boolean" ? value : null;
+}
+
 export function decodeSettingsDocument(document: unknown): DecodeResult<PersistedSettingsDocument> {
   if (!isRecord(document)) {
     return {
@@ -378,9 +398,24 @@ export function decodeSettingsDocument(document: unknown): DecodeResult<Persiste
     };
   }
 
+  const onboardingCompleted = readOnboardingCompleted(document.onboardingCompleted);
+  if (onboardingCompleted === null) {
+    return {
+      ok: false,
+      message:
+        "Le coffre de configuration est illisible : le marqueur d'onboarding a un format inattendu.",
+    };
+  }
+
   return {
     ok: true,
-    value: { schemaVersion: SETTINGS_SCHEMA_VERSION, jira, figma, ai },
+    value: {
+      schemaVersion: SETTINGS_SCHEMA_VERSION,
+      jira,
+      figma,
+      ai,
+      onboardingCompleted,
+    },
   };
 }
 

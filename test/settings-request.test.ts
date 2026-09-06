@@ -69,6 +69,16 @@ describe("parseSaveSettingsRequest — corps malformés", () => {
     const result = parseSaveSettingsRequest({ block: "figma", skipped: false });
     assert.equal(result.ok, false);
   });
+
+  test("onboarding sans le champ -> refusé", () => {
+    const result = parseSaveSettingsRequest({ block: "onboarding" });
+    assert.equal(result.ok, false);
+  });
+
+  test("onboarding avec onboardingCompleted: false -> refusé (transition à sens unique)", () => {
+    const result = parseSaveSettingsRequest({ block: "onboarding", onboardingCompleted: false });
+    assert.equal(result.ok, false);
+  });
 });
 
 describe("parseSaveSettingsRequest — corps valides", () => {
@@ -118,5 +128,12 @@ describe("parseSaveSettingsRequest — corps valides", () => {
       block: "ai",
       credentials: { provider: "gemini", apiToken: "t" },
     });
+  });
+
+  test("onboarding { onboardingCompleted: true } -> accepté", () => {
+    const result = parseSaveSettingsRequest({ block: "onboarding", onboardingCompleted: true });
+    assert.equal(result.ok, true);
+    if (!result.ok) return;
+    assert.deepEqual(result.value, { block: "onboarding", onboardingCompleted: true });
   });
 });

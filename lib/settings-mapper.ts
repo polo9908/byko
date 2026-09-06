@@ -78,14 +78,19 @@ export function toSettingsState(document: PersistedSettingsDocument): SettingsSt
     jira: mapJira(document.jira),
     figma: mapFigma(document.figma),
     ai: mapAi(document.ai),
+    onboardingCompleted: document.onboardingCompleted,
   };
 }
 
-/** Premier lancement (coffre `absent`) : trois blocs `not_connected`, aucune cause connue. */
+/**
+ * Premier lancement (coffre `absent`) : trois blocs `not_connected`, aucune cause connue,
+ * onboarding non terminé.
+ */
 export function emptySettingsState(): SettingsState {
   return {
     jira: { status: "not_connected" },
     figma: { status: "not_connected" },
     ai: { status: "not_connected" },
+    onboardingCompleted: false,
   };
 }

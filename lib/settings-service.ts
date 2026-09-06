@@ -102,6 +102,7 @@ async function saveJira(
       jira: keepValidatedConnection(base.jira, nextJira, verdict.status === "error"),
       figma: base.figma,
       ai: base.ai,
+      onboardingCompleted: base.onboardingCompleted,
     };
   });
 
@@ -153,6 +154,7 @@ async function saveFigma(
       // `failureMessage` n'est renseigné que par un test raté : `skipped` écrase bien.
       figma: keepValidatedConnection(base.figma, nextFigma, failureMessage !== undefined),
       ai: base.ai,
+      onboardingCompleted: base.onboardingCompleted,
     };
   });
 
@@ -192,6 +194,7 @@ async function saveAi(
       jira: base.jira,
       figma: base.figma,
       ai: keepValidatedConnection(base.ai, nextAi, verdict.status === "error"),
+      onboardingCompleted: base.onboardingCompleted,
     };
   });
 
@@ -204,6 +207,33 @@ async function saveAi(
 }
 
 /**
+ * Avenant d'onboarding (décision n°2 de `docs/api-contracts.md`) : marque la configuration
+ * initiale comme terminée. Transition à sens unique (`false` → `true`) : la valeur est posée à
+ * `true` sans relire l'état précédent, et aucun canal ne la ramène à `false`.
+ *
+ * Aucun appel réseau : le marqueur n'a pas de connecteur à tester. Les trois blocs sont
+ * recopiés tels quels via `store.update()` — marquer l'onboarding terminé ne doit ni relire ni
+ * réécrire un jeton, ni dégrader une connexion déjà établie.
+ */
+async function saveOnboarding(store: SettingsStore): Promise<SaveSettingsResponse> {
+  const written = await store.update((current) => {
+    const base = current ?? emptySettingsDocument();
+    return {
+      schemaVersion: base.schemaVersion,
+      jira: base.jira,
+      figma: base.figma,
+      ai: base.ai,
+      onboardingCompleted: true,
+    };
+  });
+
+  if (written.status === "error") {
+    return { block: "onboarding", status: "error", message: written.message };
+  }
+  return { block: "onboarding", status: "success" };
+}
+
+/**
  * Point d'entrée unique de `POST /api/settings`, une fois le corps de requête validé
  * (`lib/settings-request.ts`). Chaque bloc est indépendant : sauvegarder Figma ne relit ni ne
  * réécrit Jira ou l'IA autrement qu'en les recopiant tels quels via `store.update()`.
@@ -212,6 +242,9 @@ export async function applySaveSettingsRequest(
   update: SaveSettingsRequest,
   store: SettingsStore,
 ): Promise<SaveSettingsResponse> {
+  if (update.block === "onboarding") {
+    return saveOnboarding(store);
+  }
   if (update.block === "jira") {
     return saveJira(update, store);
   }

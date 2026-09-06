@@ -382,11 +382,19 @@ export type AiSettingsState =
  *
  * `lastError.message` étant une chaîne libre, c'est le seul champ de `SettingsState` par
  * lequel un jeton pourrait transiter par accident : voir `PersistedConnectionError`.
+ *
+ * `onboardingCompleted` est le marqueur explicite « configuration initiale terminée »
+ * (décision n°2 du 31/08/2026, `docs/api-contracts.md`). Il n'est PAS dérivable des trois
+ * statuts : un utilisateur ayant terminé le wizard puis dont le jeton IA expire ne doit pas
+ * retomber sur l'écran d'intro (FRONT-1), et le bouton final du Récap (FRONT-5) doit pouvoir
+ * le marquer `true`. Il est `false` tant que FRONT-5 n'a pas appelé l'écriture
+ * (`POST /api/settings`, variante `{ block: "onboarding", onboardingCompleted: true }`).
  */
 export interface SettingsState {
   jira: JiraSettingsState;
   figma: FigmaSettingsState;
   ai: AiSettingsState;
+  onboardingCompleted: boolean;
 }
 
 /**
@@ -437,8 +445,34 @@ export interface SettingsUpdateByBlock {
 export type SettingsUpdateFor<TBlock extends ConnectionBlockId> =
   SettingsUpdateByBlock[TBlock];
 
+/**
+ * Écriture du marqueur d'onboarding — avenant BACK-4, décision n°2 du 31/08/2026
+ * (`docs/api-contracts.md`). FRONT-5 (ligne 293 des tickets, phase 1) doit « marquer la
+ * configuration initiale comme terminée » au clic du bouton final du Récap ; sans ce canal
+ * d'écriture, le marqueur ne pourrait jamais passer à `true`.
+ *
+ * Le littéral `true` est volontaire, sur le même modèle que `{ skipped: true }` de Figma :
+ * l'onboarding est une transition à sens unique (`false` → `true`), et un `false` explicite
+ * n'aurait pas de sens défini (une remise à zéro de la configuration est hors périmètre,
+ * phase 3 des tickets). Aucune autre valeur que `true` n'est donc acceptée à la frontière
+ * (`lib/settings-request.ts`).
+ */
+export interface OnboardingSettingsUpdate {
+  block: "onboarding";
+  onboardingCompleted: true;
+}
+
+/**
+ * Bloc cible d'une sauvegarde : les trois blocs de connexion, plus l'avenant d'onboarding.
+ * Réservé à la sauvegarde — `ConnectionBlockId` reste le vocabulaire des blocs de connexion
+ * et ne porte pas `"onboarding"`, qui n'est pas une connexion mais une étape de configuration.
+ */
+export type SaveSettingsBlockId = ConnectionBlockId | "onboarding";
+
 /** Un seul bloc par requête (BACK-4), discriminé par `block`. */
-export type SaveSettingsRequest = SettingsUpdateFor<ConnectionBlockId>;
+export type SaveSettingsRequest =
+  | SettingsUpdateFor<ConnectionBlockId>
+  | OnboardingSettingsUpdate;
 
 /**
  * Même vocabulaire de statut que le test de connexion ; `message` requis en erreur.
@@ -451,5 +485,5 @@ export type SaveSettingsRequest = SettingsUpdateFor<ConnectionBlockId>;
  * front afficherait l'erreur de Figma sur le bloc Jira.
  */
 export type SaveSettingsResponse =
-  | { block: ConnectionBlockId; status: "success" }
-  | { block: ConnectionBlockId; status: "error"; message: string };
+  | { block: SaveSettingsBlockId; status: "success" }
+  | { block: SaveSettingsBlockId; status: "error"; message: string };

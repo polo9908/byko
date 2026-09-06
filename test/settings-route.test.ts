@@ -262,6 +262,7 @@ describe("BACK-4 — GET /api/settings (vrai handler)", () => {
           jira: { status: "not_connected" },
           figma: { status: "not_connected" },
           ai: { status: "not_connected" },
+          onboardingCompleted: false,
         },
       });
     });
@@ -369,6 +370,7 @@ describe("BACK-4 — POST /api/settings (vrai handler)", () => {
           },
           figma: { status: "not_connected" },
           ai: { status: "not_connected" },
+          onboardingCompleted: false,
         },
       });
     });
@@ -420,6 +422,28 @@ describe("BACK-4 — POST /api/settings (vrai handler)", () => {
           },
           figma: { status: "not_connected" },
           ai: { status: "not_connected" },
+          onboardingCompleted: false,
+        },
+      });
+    });
+  });
+
+  test("POST onboarding puis GET : `onboardingCompleted` passe à true sans toucher aux blocs", async () => {
+    await withTempHome(async () => {
+      const { GET, POST } = await loadRoute();
+
+      const response = await POST(jsonRequest({ block: "onboarding", onboardingCompleted: true }));
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { block: "onboarding", status: "success" });
+
+      const body: unknown = await (await GET()).json();
+      assert.deepEqual(body, {
+        status: "success",
+        settings: {
+          jira: { status: "not_connected" },
+          figma: { status: "not_connected" },
+          ai: { status: "not_connected" },
+          onboardingCompleted: true,
         },
       });
     });
@@ -502,6 +526,7 @@ describe("BACK-4 — deux sauvegardes en vol simultanément", () => {
           // davantage défaire une sauvegarde antérieure.
           figma: { status: "skipped" },
           ai: { status: "connected", provider: "anthropic" },
+          onboardingCompleted: false,
         },
       });
     });
