@@ -121,6 +121,13 @@ export class BrowserAutomationAgent {
         }
 
         this.detail = describe(action)
+        // Le libellé de l'élément visé est journalisé : sans lui, « cliquer sur e51 »
+        // ne dit rien à qui relit le journal après coup.
+        const target =
+          action.kind === "click" || action.kind === "fill"
+            ? observation.elements.find((element) => element.ref === action.ref)
+            : undefined
+        this.options.logger.info(`étape ${this.step} : ${describe(action)}${target?.name ? ` — « ${target.name} »` : ""}`)
         const executed = await this.perform(action)
         if (executed === null) return
         this.record(`${describe(action)} → ${executed ? "fait" : this.lastFailure}`)
@@ -267,9 +274,16 @@ export class BrowserAutomationAgent {
   }
 }
 
+/**
+ * Décrit une action pour le journal et l'historique du modèle.
+ *
+ * **Jamais la valeur saisie** : un `fill` porte souvent un jeton d'API — Jira,
+ * Figma, une clé de fournisseur d'IA. Le journal ne doit pas en garder trace,
+ * et le modèle n'a pas besoin de se voir relire ce qu'il a écrit.
+ */
 function describe(action: ExecutableAction): string {
   if (action.kind === "wait") return `attendre ${action.ms} ms`
-  if (action.kind === "fill") return `saisir « ${action.value} » dans ${action.ref}`
+  if (action.kind === "fill") return `saisir dans ${action.ref}`
   return `cliquer sur ${action.ref}`
 }
 
