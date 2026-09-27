@@ -570,3 +570,29 @@ Règles :
   figurer dans le relevé. La parade est de relever sur un **client jetable**, supprimé ensuite.
 - **Hors usage normal.** L'outil n'est activable que par une variable d'environnement explicite, et
   il est destiné à l'auteur des recettes, pas à l'utilisateur de BYKO.
+
+### 14.1 Ce que le premier relevé réel a appris (27/09/2026)
+
+Relevé de `console.cloud.google.com/projectcreate` : 76 éléments.
+
+**Ce qui aide.** Google balise ses champs avec une convention stable — `#p6ntest-name-input`
+(nom du projet), `#p6ntest-show-edit-proj-id`, `#cfctest-locked-org-picker`, `#main` — et ces
+identifiants survivent au rendu. Les éléments qui comptent pour la recette sont donc
+sélectionnables de façon fiable.
+
+**Ce qui menace.** Sur 76 éléments, **29 portent un identifiant régénéré à chaque rendu**
+(`panelgoog_1461678169`, `mat-input-OneCloudBarMicroUi__d3acfad3-…`) : inutilisables comme
+ancres. Il faut les reconnaître et les écarter, sinon la recette casse au premier rechargement.
+
+**La contrainte qu'on n'avait pas anticipée : la console est localisée.** Le bouton de
+validation porte le texte « Créer » chez un compte francophone, « Create » chez un compte
+anglophone — et il n'a sinon qu'un `type="submit"`. Une recette qui sélectionne par libellé
+casse dès que l'utilisateur change de langue. **Règle qui en découle : préférer une ancre
+structurelle** (`form button[type="submit"]`) ou un identifiant stable, et ne retomber sur le
+libellé qu'en dernier recours, en prévoyant les langues connues.
+
+**Une limite à connaître.** L'écran de création de client OAuth n'affiche le Client Secret
+qu'**après** création : le relever suppose donc de créer un client, qui devra être supprimé
+ensuite. Les quatre autres pages se relèvent sans rien créer. Et le relevé d'un compte connecté
+contient des données personnelles (nom, adresse de messagerie dans les libellés de la barre de
+compte) : ce fichier ne doit jamais être versionné.
