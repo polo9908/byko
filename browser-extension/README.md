@@ -72,13 +72,19 @@ les inventer. Jamais actif en usage normal.
 
 ```sh
 npm run build
-BYKO_RECON_ORIGIN=https://console.cloud.google.com npx electron .
+BYKO_RECON_URL_PREFIX=https://console.cloud.google.com/ npx electron .
 ```
 
+La valeur est un **préfixe d'URL**, pas forcément un domaine : viser
+`https://console.cloud.google.com/projectcreate` relève cette page précise, ce
+qui permet de relever plusieurs pages ouvertes en parallèle, une exécution par
+page.
+
 BYKO demande alors à l'extension de relever l'onglet **que tu as ouvert toi-même**
-sur cette origine, puis écrit le résultat dans un fichier `recon-<horodatage>.json`
-à la racine des données de l'application (`~/Library/Application Support/BYKO/`).
-Rien n'est navigué, rien n'est rempli, rien n'est cliqué.
+correspondant à ce préfixe, puis écrit le résultat dans un fichier
+`recon-<horodatage>.json` à la racine des données de l'application
+(`~/Library/Application Support/BYKO/`). Rien n'est navigué, rien n'est rempli,
+rien n'est cliqué.
 
 **Ce que le relevé contient** : pour chaque élément interactif visible, sa balise,
 son rôle, son libellé (tronqué), une proposition de sélecteur, et une liste fermée

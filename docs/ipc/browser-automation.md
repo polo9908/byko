@@ -556,7 +556,7 @@ capture est écrite, testée, et n'en connaît aucun.
 |---|---|
 | Côté BYKO : demande, attente de la réponse, écriture du relevé | `src/main/browser-automation/recon.ts` |
 | Côté extension : sélection de l'onglet et relevé | `browser-extension/service-worker.js` (`collectStructure`) |
-| Déclenchement | variable d'environnement `BYKO_RECON_ORIGIN`, jamais posée par défaut |
+| Déclenchement | variable d'environnement `BYKO_RECON_URL_PREFIX`, jamais posée par défaut. Sa valeur est un préfixe d'URL : viser `…/projectcreate` relève cette page précise, ce qui permet de relever plusieurs pages ouvertes en parallèle |
 
 Règles :
 

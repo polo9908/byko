@@ -93,7 +93,7 @@ export type BridgeMessage =
   | { type: "finished"; runId: string; outcome: "completed" | "paused" | "failed"; reason?: string }
   // Reconnaissance — outil de maintenance, jamais activé en usage normal. Sert à
   // écrire les sélecteurs d'une recette, puis à en proposer la réparation.
-  | { type: "recon"; requestId: string; origin: string }
+  | { type: "recon"; requestId: string; urlPrefix: string }
   | { type: "reconResult"; requestId: string; url: string; nodes: ReconNode[] }
   | { type: "reconFailed"; requestId: string; reason: string }
 

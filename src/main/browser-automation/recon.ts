@@ -13,8 +13,23 @@ export interface ReconOptions {
   logger: BridgeLogger
   /** Répertoire où déposer le relevé. */
   outputDir: string
-  /** Origine à relever, par exemple `https://console.cloud.google.com`. */
-  origin: string
+  /**
+   * Préfixe d'URL à relever. Permet de viser une page précise
+   * (`https://console.cloud.google.com/projectcreate`) et pas seulement un
+   * domaine entier, pour relever plusieurs pages ouvertes en parallèle.
+   */
+  urlPrefix: string
+}
+
+/**
+ * Complète un préfixe d'URL pour qu'il forme un motif valide pour
+ * `chrome.tabs.query` : le chemin doit commencer par une barre oblique.
+ */
+export function normalizeUrlPrefix(value: string): string {
+  const trimmed = value.trim()
+  const schemeEnd = trimmed.indexOf("://")
+  if (schemeEnd === -1) return trimmed
+  return trimmed.includes("/", schemeEnd + 3) ? trimmed : `${trimmed}/`
 }
 
 /**
@@ -37,8 +52,8 @@ export class BrowserAutomationRecon {
   request(): string {
     const requestId = randomUUID()
     this.pendingId = requestId
-    this.options.logger.info(`relevé demandé pour ${this.options.origin}`)
-    this.options.bridge.send({ type: "recon", requestId, origin: this.options.origin })
+    this.options.logger.info(`relevé demandé pour ${this.options.urlPrefix}`)
+    this.options.bridge.send({ type: "recon", requestId, urlPrefix: this.options.urlPrefix })
     return requestId
   }
 
@@ -56,7 +71,7 @@ export class BrowserAutomationRecon {
     const path = join(this.options.outputDir, `recon-${Date.now()}.json`)
     const payload = {
       capturedAt: new Date().toISOString(),
-      origin: this.options.origin,
+      urlPrefix: this.options.urlPrefix,
       url: message.url,
       nodeCount: message.nodes.length,
       truncated: message.nodes.length >= RECON_MAX_NODES,

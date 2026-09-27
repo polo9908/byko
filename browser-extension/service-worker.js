@@ -110,14 +110,16 @@ function collectStructure() {
 }
 
 async function handleRecon(message) {
-  const origin = String(message.origin || "")
+  const urlPrefix = String(message.urlPrefix || "")
   try {
-    const [tab] = await chrome.tabs.query({ url: `${origin}/*` })
+    // Le préfixe vise une page précise si on le souhaite
+    // (`…/projectcreate`), ce qui permet de relever plusieurs pages ouvertes.
+    const [tab] = await chrome.tabs.query({ url: `${urlPrefix}*` })
     if (!tab || typeof tab.id !== "number") {
       port.postMessage({
         type: "reconFailed",
         requestId: message.requestId,
-        reason: `aucun onglet ouvert sur ${origin}`,
+        reason: `aucun onglet ouvert sur ${urlPrefix}`,
       })
       return
     }
@@ -128,7 +130,7 @@ async function handleRecon(message) {
     port.postMessage({
       type: "reconResult",
       requestId: message.requestId,
-      url: tab.url || origin,
+      url: tab.url || urlPrefix,
       nodes: injection && injection.result ? injection.result : [],
     })
   } catch (error) {

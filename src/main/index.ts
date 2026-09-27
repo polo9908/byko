@@ -10,7 +10,7 @@ import { listConnectors } from "./connectors/registry"
 import * as connectorSetup from "./connectors/setup-pages"
 import { BrowserAutomationBridge } from "./browser-automation/bridge"
 import { browserAutomationSocketPath } from "./browser-automation/socket-path"
-import { BrowserAutomationRecon } from "./browser-automation/recon"
+import { BrowserAutomationRecon, normalizeUrlPrefix } from "./browser-automation/recon"
 import * as journal from "./journal"
 import * as autonomy from "./autonomy"
 import * as speech from "./speech"
@@ -409,13 +409,13 @@ app.whenReady().then(() => {
   // Outil de maintenance, jamais actif en usage normal : relever la structure
   // d'une page pour écrire les sélecteurs d'une recette, au lieu de les inventer
   // (contrat, §13). Ne s'active que si la variable est posée explicitement.
-  const reconOrigin = process.env["BYKO_RECON_ORIGIN"]
-  const browserAutomationRecon = reconOrigin
+  const reconPrefix = process.env["BYKO_RECON_URL_PREFIX"]
+  const browserAutomationRecon = reconPrefix
     ? new BrowserAutomationRecon({
         bridge: { send: (message) => browserAutomation.sendToExtension(message) },
         logger: automationLogger,
         outputDir: app.getPath("userData"),
-        origin: reconOrigin,
+        urlPrefix: normalizeUrlPrefix(reconPrefix),
       })
     : null
   if (browserAutomationRecon) {
