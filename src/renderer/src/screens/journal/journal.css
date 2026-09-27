@@ -1,0 +1,209 @@
+/* Écran Journal (ticket C1), styles relevés sur le prototype BCC Medium.html. */
+
+.journal-screen {
+  min-height: 100vh;
+  padding: 24px;
+  display: flex;
+  justify-content: center;
+}
+
+.journal-page {
+  width: 100%;
+  max-width: 620px;
+}
+
+.journal-eyebrow {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -0.16px;
+  color: var(--bcc-color-text-muted);
+  margin: 0 0 8px;
+}
+
+.journal-title {
+  font-size: 40px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  margin: 0 0 32px;
+}
+
+.journal-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bcc-color-text-muted);
+  margin: 0 0 4px;
+}
+
+.journal-section {
+  margin-bottom: 28px;
+}
+
+.journal-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.journal-row:last-child {
+  border-bottom: none;
+}
+
+.journal-row-icon {
+  font-size: 15px;
+  line-height: 1;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.journal-row-time {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  color: var(--bcc-color-text-muted);
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 40px;
+}
+
+.journal-row-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.journal-row-title {
+  font-size: 14.5px;
+  color: var(--bcc-color-text);
+}
+
+.journal-row-link {
+  font-size: 13px;
+  color: var(--bcc-color-accent);
+  text-decoration: none;
+}
+
+.journal-row-tag {
+  font-size: 12.5px;
+  color: var(--bcc-color-text-muted);
+}
+
+.journal-row-status {
+  font-size: 13.5px;
+  color: var(--bcc-color-text-muted);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.journal-row-cancel {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--bcc-color-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.journal-ticket-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  text-decoration: none;
+  color: inherit;
+}
+
+.journal-ticket-row:last-child {
+  border-bottom: none;
+}
+
+.journal-ticket-key {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12.5px;
+  color: var(--bcc-color-text-muted);
+  flex-shrink: 0;
+  width: 64px;
+}
+
+.journal-ticket-summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  color: var(--bcc-color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.journal-ticket-status {
+  font-size: 12.5px;
+  color: var(--bcc-color-text-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.journal-ticket-chevron {
+  color: var(--bcc-color-text-muted);
+  flex-shrink: 0;
+}
+
+.journal-empty {
+  font-size: 14px;
+  color: var(--bcc-color-text-muted);
+  padding: 8px 0 14px;
+}
+
+.journal-back {
+  display: inline-block;
+  margin-bottom: 24px;
+}
+
+.journal-autonomy-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 0;
+}
+
+.journal-autonomy-label {
+  font-size: 16px;
+  color: var(--bcc-color-text);
+  flex: 1;
+}
+
+.journal-autonomy-dots {
+  display: flex;
+  gap: 4px;
+}
+
+.journal-autonomy-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.journal-autonomy-dot--filled {
+  background: #34c759;
+}
+
+.journal-autonomy-dot--partial {
+  background: #1d1d1f;
+}
+
+.journal-autonomy-status {
+  font-size: 13.5px;
+  color: var(--bcc-color-text-muted);
+  width: 130px;
+  text-align: right;
+  flex-shrink: 0;
+}
