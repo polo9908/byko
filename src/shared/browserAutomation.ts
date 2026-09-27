@@ -96,6 +96,52 @@ export type BridgeMessage =
   | { type: "recon"; requestId: string; urlPrefix: string }
   | { type: "reconResult"; requestId: string; url: string; nodes: ReconNode[] }
   | { type: "reconFailed"; requestId: string; reason: string }
+  // Pilotage par IA (§3.3) : BYKO demande une observation, l'IA choisit une
+  // action, on l'exécute. Puis, hors boucle, la lecture des identifiants.
+  | { type: "observe"; requestId: string; urlPrefix: string }
+  | { type: "observation"; requestId: string; url: string; elements: ObservedElement[] }
+  | { type: "observeFailed"; requestId: string; reason: string }
+  | { type: "act"; requestId: string; urlPrefix: string; action: AgentAction }
+  | { type: "actResult"; requestId: string; ok: boolean; detail?: string }
+  | { type: "captureCredentials"; requestId: string; urlPrefix: string }
+  | { type: "credentials"; requestId: string; clientId: string | null; clientSecret: string | null }
+
+/**
+ * Élément de la page tel qu'il est transmis au modèle.
+ *
+ * C'est la seule fenêtre du modèle sur l'utilisateur : elle ne contient **jamais**
+ * la valeur d'un champ, ni le texte libre de la page. Voir l'invariante du §3.3.
+ */
+export interface ObservedElement {
+  /** Référence éphémère (« e0 », « e1 »…), valable pour une seule observation. */
+  ref: string
+  tag: string
+  role: string | null
+  name: string | null
+  shadow: boolean
+  attributes: Readonly<Record<string, string>>
+}
+
+/**
+ * Action décidée par le modèle. Le modèle ne fournit **jamais** de sélecteur : il
+ * désigne un élément déjà observé, par sa référence. Il ne peut donc pas viser
+ * autre chose que ce qu'il a vu.
+ */
+export type AgentAction =
+  | { kind: "click"; ref: string }
+  | { kind: "fill"; ref: string; value: string }
+  | { kind: "wait"; ms: number }
+  | { kind: "done"; summary: string }
+  | { kind: "giveUp"; reason: string }
+
+/** Actions que l'extension exécute ; `done` et `giveUp` closent la boucle côté main. */
+export type ExecutableAction = Extract<AgentAction, { kind: "click" | "fill" | "wait" }>
+
+/** Bornes de la boucle : un modèle ne doit pas pouvoir tourner indéfiniment. */
+export const AGENT_MAX_STEPS = 30
+export const AGENT_MAX_ELEMENTS = 250
+/** Un `wait` demandé par le modèle est plafonné, sinon il peut geler la boucle. */
+export const AGENT_MAX_WAIT_MS = 8000
 
 /**
  * Élément interactif d'une page, tel que renvoyé par la reconnaissance.
@@ -145,6 +191,13 @@ const BRIDGE_MESSAGE_TYPE_MAP: Record<BridgeMessage["type"], true> = {
   recon: true,
   reconResult: true,
   reconFailed: true,
+  observe: true,
+  observation: true,
+  observeFailed: true,
+  act: true,
+  actResult: true,
+  captureCredentials: true,
+  credentials: true,
 }
 
 export const BRIDGE_MESSAGE_TYPES: ReadonlySet<string> = new Set(Object.keys(BRIDGE_MESSAGE_TYPE_MAP))

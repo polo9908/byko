@@ -11,6 +11,7 @@ import * as connectorSetup from "./connectors/setup-pages"
 import { BrowserAutomationBridge } from "./browser-automation/bridge"
 import { browserAutomationSocketPath } from "./browser-automation/socket-path"
 import { BrowserAutomationRecon, normalizeUrlPrefix } from "./browser-automation/recon"
+import { BrowserAutomationAgent } from "./browser-automation/agent"
 import * as journal from "./journal"
 import * as autonomy from "./autonomy"
 import * as speech from "./speech"
@@ -423,11 +424,40 @@ app.whenReady().then(() => {
           urlPrefixes: reconPrefixes,
         })
       : null
-  if (browserAutomationRecon) {
+
+  // Pilotage par IA (contrat, §3.3). Déclenché par l'environnement le temps de
+  // l'éprouver ; le bouton « connexion auto » de l'interface viendra le
+  // remplacer, sans changer cette mécanique.
+  const agentGoal = process.env["BYKO_AGENT_GOAL"]
+  const agentOrigin = normalizeUrlPrefix(process.env["BYKO_AGENT_ORIGIN"] ?? "")
+  const agent =
+    agentGoal && agentOrigin
+      ? new BrowserAutomationAgent({
+          bridge: { send: (message) => browserAutomation.sendToExtension(message) },
+          logger: automationLogger,
+          complete: (prompt) => aiProvider.complete(prompt),
+          goal: agentGoal,
+          urlPrefix: agentOrigin,
+          applyCredentials: async (clientId, clientSecret) => {
+            // Première étape : vérifier qu'on sait les lire. Le branchement réel
+            // passe par `applyCapturedValues`, qui enchaîne le flux OAuth — c'est
+            // là que l'utilisateur clique « Autoriser ».
+            automationLogger.info(
+              `identifiants lus (Client ID : ${clientId.length} caractères, Secret : ${clientSecret.length} caractères)`,
+            )
+          },
+        })
+      : null
+
+  browserAutomation.onMessage = (message) => {
+    if (browserAutomationRecon?.handleMessage(message)) return
+    agent?.handleMessage(message)
+  }
+  browserAutomation.onConnected = () => {
     // L'extension peut se connecter après le démarrage : on attend qu'elle
-    // s'annonce pour lancer la série de relevés.
-    browserAutomation.onConnected = () => browserAutomationRecon.start()
-    browserAutomation.onMessage = (message) => browserAutomationRecon.handleMessage(message)
+    // s'annonce avant de lui demander quoi que ce soit.
+    browserAutomationRecon?.start()
+    if (agent) void agent.run()
   }
 
   browserAutomation.start()

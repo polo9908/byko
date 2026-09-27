@@ -158,6 +158,234 @@ async function handleRecon(message) {
   }
 }
 
+/**
+ * Observation de la page, pour le pilotage par IA.
+ *
+ * Ne transmet **jamais** la valeur d'un champ ni le texte libre de la page : que
+ * des éléments, avec une référence éphémère. Les éléments eux-mêmes sont gardés
+ * dans un tableau que `performAction` retrouvera — le modèle ne manipule jamais
+ * de sélecteur, seulement une référence qu'il a vue.
+ *
+ * Doit rester autonome : chrome.scripting sérialise cette fonction.
+ */
+function observePage(maxElements) {
+  const KEEP_ATTRIBUTES = [
+    "id",
+    "role",
+    "aria-label",
+    "aria-expanded",
+    "aria-haspopup",
+    "aria-checked",
+    "name",
+    "type",
+    "placeholder",
+    "jsname",
+    "title",
+    "data-testid",
+  ]
+  const CANDIDATES =
+    "a,button,input,select,textarea,summary,label,[role],[contenteditable=true],[jsname],[aria-label]"
+
+  const roots = [document]
+  for (let index = 0; index < roots.length && roots.length < 40; index += 1) {
+    for (const element of roots[index].querySelectorAll("*")) {
+      if (element.shadowRoot) roots.push(element.shadowRoot)
+    }
+  }
+
+  const refs = []
+  const elements = []
+  for (const root of roots) {
+    for (const element of root.querySelectorAll(CANDIDATES)) {
+      if (elements.length >= maxElements) break
+      const rect = element.getBoundingClientRect()
+      if (rect.width === 0 && rect.height === 0) continue
+      if (element.getAttribute("aria-hidden") === "true") continue
+
+      const attributes = {}
+      for (const name of KEEP_ATTRIBUTES) {
+        const value = element.getAttribute(name)
+        if (typeof value === "string" && value !== "") attributes[name] = value.slice(0, 120)
+      }
+
+      const tag = element.tagName.toLowerCase()
+      const controls = tag === "input" || tag === "textarea" || tag === "select"
+      const ownText = controls ? "" : (element.innerText || "").replace(/\s+/g, " ").trim().slice(0, 80)
+      const ref = `e${elements.length}`
+      refs.push(element)
+      elements.push({
+        ref,
+        tag,
+        role: attributes.role || null,
+        name: attributes["aria-label"] || ownText || attributes.placeholder || null,
+        shadow: root !== document,
+        attributes,
+      })
+    }
+  }
+
+  globalThis.__bykoRefs = refs
+  return elements
+}
+
+/**
+ * Exécute une action décidée par le modèle, sur un élément **déjà observé**.
+ * Le modèle ne fournit qu'une référence ; il ne peut donc pas viser autre chose
+ * que ce qu'il a vu.
+ */
+function performAction(action) {
+  if (action.kind === "wait") return { ok: true }
+
+  const refs = globalThis.__bykoRefs || []
+  const index = Number(String(action.ref || "").slice(1))
+  const element = refs[index]
+  if (!element) {
+    return { ok: false, detail: `référence « ${action.ref} » inconnue (la page a-t-elle changé ?)` }
+  }
+
+  try {
+    element.scrollIntoView({ block: "center", inline: "nearest" })
+  } catch {
+    // Un élément non défilable n'empêche pas d'agir.
+  }
+
+  if (action.kind === "click") {
+    // La console écoute des événements de souris : un simple .click() ne suffit
+    // pas toujours sur ses composants.
+    element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+    element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }))
+    element.click()
+    return { ok: true }
+  }
+
+  if (action.kind === "fill") {
+    element.focus()
+    // Les champs contrôlés n'obéissent pas à une affectation directe de .value :
+    // il faut passer par le setter natif, puis signaler la saisie.
+    const prototype =
+      element.tagName === "TEXTAREA"
+        ? HTMLTextAreaElement.prototype
+        : element.tagName === "SELECT"
+          ? HTMLSelectElement.prototype
+          : HTMLInputElement.prototype
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value")
+    if (descriptor && descriptor.set) descriptor.set.call(element, action.value)
+    else element.value = action.value
+    element.dispatchEvent(new Event("input", { bubbles: true }))
+    element.dispatchEvent(new Event("change", { bubbles: true }))
+    return { ok: true }
+  }
+
+  return { ok: false, detail: `action inconnue : ${String(action.kind)}` }
+}
+
+/**
+ * Lecture des identifiants, **hors de la boucle IA**.
+ *
+ * C'est le seul endroit qui lit la valeur de champs, et il ne parle qu'à BYKO :
+ * jamais au modèle. Il tourne après que l'IA a rendu la main, précisément pour
+ * qu'aucune page affichant un secret ne soit jamais observée par une IA.
+ */
+function readCredentials() {
+  const roots = [document]
+  for (let index = 0; index < roots.length && roots.length < 40; index += 1) {
+    for (const element of roots[index].querySelectorAll("*")) {
+      if (element.shadowRoot) roots.push(element.shadowRoot)
+    }
+  }
+
+  const candidates = []
+  for (const root of roots) {
+    for (const element of root.querySelectorAll("input, textarea, [role=textbox], code, pre")) {
+      const raw = typeof element.value === "string" && element.value !== "" ? element.value : element.innerText
+      const text = typeof raw === "string" ? raw.trim() : ""
+      if (text !== "" && text.length < 300) candidates.push(text)
+    }
+  }
+
+  const clientId = candidates.find((value) => /^[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com$/i.test(value)) || null
+  const clientSecret = candidates.find((value) => /^GOCSPX-[A-Za-z0-9_-]+$/.test(value)) || null
+  return { clientId, clientSecret }
+}
+
+/** Retrouve l'onglet ouvert sur un préfixe d'URL, ou rend `null`. */
+async function findTab(urlPrefix) {
+  const [tab] = await chrome.tabs.query({ url: `${urlPrefix}*` })
+  return tab && typeof tab.id === "number" ? tab : null
+}
+
+/** Injecte une fonction dans l'onglet visé et rend son résultat. */
+async function inject(tabId, func, args) {
+  const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func, args })
+  return injection ? injection.result : undefined
+}
+
+async function handleObserve(message) {
+  const urlPrefix = String(message.urlPrefix || "")
+  try {
+    const tab = await findTab(urlPrefix)
+    if (!tab) {
+      port.postMessage({
+        type: "observeFailed",
+        requestId: message.requestId,
+        reason: `aucun onglet ouvert sur ${urlPrefix}`,
+      })
+      return
+    }
+    const elements = (await inject(tab.id, observePage, [message.maxElements || 250])) || []
+    port.postMessage({
+      type: "observation",
+      requestId: message.requestId,
+      url: tab.url || urlPrefix,
+      elements,
+    })
+  } catch (error) {
+    port.postMessage({
+      type: "observeFailed",
+      requestId: message.requestId,
+      reason: error && error.message ? error.message : String(error),
+    })
+  }
+}
+
+async function handleAct(message) {
+  try {
+    const tab = await findTab(message.urlPrefix)
+    if (!tab) {
+      port.postMessage({ type: "actResult", requestId: message.requestId, ok: false, detail: "onglet disparu" })
+      return
+    }
+    const result = (await inject(tab.id, performAction, [message.action])) || { ok: false, detail: "sans réponse" }
+    port.postMessage({ type: "actResult", requestId: message.requestId, ok: result.ok, detail: result.detail })
+  } catch (error) {
+    port.postMessage({
+      type: "actResult",
+      requestId: message.requestId,
+      ok: false,
+      detail: error && error.message ? error.message : String(error),
+    })
+  }
+}
+
+async function handleCaptureCredentials(message) {
+  try {
+    const tab = await findTab(message.urlPrefix)
+    if (!tab) {
+      port.postMessage({ type: "credentials", requestId: message.requestId, clientId: null, clientSecret: null })
+      return
+    }
+    const found = (await inject(tab.id, readCredentials, [])) || { clientId: null, clientSecret: null }
+    port.postMessage({
+      type: "credentials",
+      requestId: message.requestId,
+      clientId: found.clientId,
+      clientSecret: found.clientSecret,
+    })
+  } catch {
+    port.postMessage({ type: "credentials", requestId: message.requestId, clientId: null, clientSecret: null })
+  }
+}
+
 function connect() {
   if (port) return
   clearTimeout(retryTimer)
@@ -180,6 +408,18 @@ function connect() {
     }
     if (message.type === "recon") {
       void handleRecon(message)
+      return
+    }
+    if (message.type === "observe") {
+      void handleObserve(message)
+      return
+    }
+    if (message.type === "act") {
+      void handleAct(message)
+      return
+    }
+    if (message.type === "captureCredentials") {
+      void handleCaptureCredentials(message)
       return
     }
     log(`message inattendu de BYKO : ${String(message.type)}`, "warn")

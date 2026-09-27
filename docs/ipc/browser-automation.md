@@ -75,35 +75,38 @@ formulaire d'inscription.
 **Motif** : infaisable de façon fiable (CAPTCHA, vérification téléphonique) et contraire aux
 conditions d'utilisation des fournisseurs concernés.
 
-### 3.3 Arbitré par l'utilisateur le 27/09/2026 — recettes figées, pas de pilotage par IA
+### 3.3 Révisé par l'utilisateur le 27/09/2026 — pilotage par IA, avec une invariante
 
-**Retenu : des recettes déterministes** (origine autorisée + liste ordonnée d'étapes), et non le
-pilotage « à la Claude » où un modèle regarde la page et décide chaque clic.
+**Décision : l'automatisation est pilotée par un modèle à l'exécution, pas par des sélecteurs
+figés.** L'extension observe la structure de la page, l'IA décide la prochaine action, on
+l'exécute, on recommence jusqu'à l'objectif. Aucun sélecteur à écrire ni à maintenir, et le même
+mécanisme vaut pour les neuf connecteurs. Le modèle est celui que l'utilisateur a déjà configuré
+dans BYKO (`aiProvider.complete`, le même que celui du compte rendu de point d'équipe).
 
-**Motifs** : non-déterminisme (une même recette doit produire le même résultat à chaque fois) ;
-auditabilité (`CLAUDE.md` impose `qa-log-auditor` sur les zones sensibles, or une décision prise
-par un modèle à chaque clic n'est pas relisible) ; et fuite du contenu de pages contenant des
-identifiants vers un fournisseur d'IA tiers.
+**L'invariante, non négociable.** L'IA décide **où** cliquer ; elle ne reçoit **jamais** une page
+où un secret s'affiche, et **jamais** la valeur d'un champ :
 
-**Précision du 27/09/2026 — l'IA n'intervient qu'en réparation, jamais au vol.** Le pilotage à
-l'exécution reste écarté, mais une aide est prévue : quand un sélecteur cesse de correspondre,
-l'IA propose le sélecteur corrigé à partir de la structure de la page, un humain le valide, et il
-est commité. Aucun appel d'IA n'a lieu sur la machine de l'utilisateur, aucun jeton n'est dépensé
-à l'usage, et la recette livrée reste déterministe et relisible.
+1. L'observation ne transmet que des éléments — balise, rôle, libellé, attributs sur liste
+   fermée. **Aucune valeur de champ, aucun texte libre de la page.**
+2. **Aucune capture d'écran.** Une image de l'écran de création de client montrerait le Client
+   Secret ; l'IA navigue donc par structure, pas par vision. C'est une perte de capacité assumée.
+3. **La dernière décision de l'IA est « cliquer sur Créer ».** Ensuite l'IA sort de la boucle, et
+   c'est **notre code** qui lit le Client ID et le Secret dans la page.
 
-Deux raisons, dans l'ordre d'importance :
+**Motif** : dès la création validée, le Client Secret s'affiche à l'écran. Une IA qui observerait
+à cet instant l'enverrait au fournisseur d'IA configuré — sur la page même où le secret naît.
 
-1. **Les pages automatisées affichent les secrets qu'on récupère** — le Client Secret, le jeton
-   Atlassian, le jeton Figma. Une IA qui « regarde » ces pages enverrait ces secrets à un
-   fournisseur tiers, sur l'écran même où ils naissent.
-2. Un pilotage à l'exécution n'est ni reproductible ni auditable, alors que `CLAUDE.md` impose un
-   audit des zones sensibles.
+**Risques assumés, énoncés** : un faux clic (un modèle pilote une console cloud ; bornage aux
+origines en liste blanche, bouton Arrêter, actions visibles à l'écran) ; un coût en jetons à
+chaque connexion ; et un parcours **non reproductible** — deux utilisateurs peuvent suivre des
+chemins différents. Chaque décision est journalisée, donc l'ensemble reste relisible *après coup*,
+mais pas prévisible.
 
-Un repli d'IA à l'exécution — sur structure de page assainie, et seulement pour les étapes qui ne
-touchent à aucun secret — reste une option ouverte, à construire plus tard si les recettes se
-révèlent pénibles à maintenir. Ce filtre d'assainissement serait alors du code critique, testé
-comme tel : un DOM porte des valeurs dans ses attributs, et une seule erreur de filtre est une
-fuite.
+**Ce que cette révision remplace.** La version antérieure de cette section, arbitrée le même jour,
+retenait des recettes figées et n'autorisait l'IA qu'en réparation. Elle est abandonnée : un
+relevé réel a montré que les formulaires de la console changent d'état au fil des étapes, ce qui
+aurait demandé une observation par état — une dizaine d'allers-retours par connecteur, cent pour
+les neuf. Le pilotage par IA traverse ces changements d'état sans rien écrire.
 
 ### 3.4 Posé par l'utilisateur le 27/09/2026 — le minimum de clavier et de souris
 
