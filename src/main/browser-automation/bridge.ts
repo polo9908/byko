@@ -35,6 +35,9 @@ export class BrowserAutomationBridge {
    */
   onMessage: ((message: BridgeMessage) => void) | null = null
 
+  /** Appelé quand une extension s'annonce. Sert à déclencher ce qui exige une connexion. */
+  onConnected: (() => void) | null = null
+
   private server: Server | null = null
   private socket: Socket | null = null
   private keepalive: ReturnType<typeof setInterval> | null = null
@@ -112,6 +115,13 @@ export class BrowserAutomationBridge {
     return id
   }
 
+  /** Envoie un message à l'extension. Rend `false` si rien n'est connecté. */
+  sendToExtension(message: BridgeMessage): boolean {
+    if (!this.socket) return false
+    this.send(message)
+    return true
+  }
+
   private send(message: BridgeMessage): void {
     this.socket?.write(`${JSON.stringify(message)}\n`)
   }
@@ -170,6 +180,7 @@ export class BrowserAutomationBridge {
         this.logger.info(`extension connectée (version ${parsed.extensionVersion})`)
         this.ping()
         this.startKeepalive()
+        this.onConnected?.()
         break
       case "ping":
         this.send({ type: "pong", id: parsed.id })

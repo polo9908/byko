@@ -540,5 +540,33 @@ examinées :
 - **Un mode enregistreur** dans l'extension : l'utilisateur fait le parcours une fois, les
   sélecteurs sont observés plutôt que devinés.
 
-Ces trois voies restent ouvertes. Ce qui est certain, c'est que **la mécanique de la phase ③ n'en
-dépend pas** : la chaîne de capture est écrite, testée, et ne connaît aucun sélecteur.
+**Voie retenue le 27/09/2026 : la reconnaissance par l'extension elle-même** (voir §14). Elle
+réutilise le canal déjà prouvé au lieu d'ajouter un second outillage : l'utilisateur ouvre la page
+dans son navigateur — il y est déjà connecté —, BYKO demande à l'extension de relever la
+structure de cet onglet, et l'auteur de la recette en tire les sélecteurs réels. Rien à installer,
+aucun contournement de la protection de Chrome, et la même mécanique servira plus tard à proposer
+la réparation d'une recette cassée.
+
+Ce qui reste certain : **la mécanique de la phase ③ ne dépend d'aucun sélecteur**. La chaîne de
+capture est écrite, testée, et n'en connaît aucun.
+
+## 14. Outil de maintenance — relevé de structure
+
+| Élément | Fichier |
+|---|---|
+| Côté BYKO : demande, attente de la réponse, écriture du relevé | `src/main/browser-automation/recon.ts` |
+| Côté extension : sélection de l'onglet et relevé | `browser-extension/service-worker.js` (`collectStructure`) |
+| Déclenchement | variable d'environnement `BYKO_RECON_ORIGIN`, jamais posée par défaut |
+
+Règles :
+
+- **Aucune valeur de champ n'est jamais lue.** Le relevé ne collecte que des attributs d'une liste
+  fermée et des libellés tronqués. Collecter `.value` serait le moyen le plus direct de faire
+  sortir le secret qu'on vient de créer.
+- **L'onglet est celui de l'utilisateur.** Rien n'est navigué, rien n'est rempli, rien n'est
+  cliqué : la reconnaissance observe, elle n'agit pas.
+- **Limite connue et documentée** : une page peut *afficher* un secret en texte visible — c'est le
+  cas de l'écran qui vient de créer un client OAuth. Ce texte fait partie de la page et peut donc
+  figurer dans le relevé. La parade est de relever sur un **client jetable**, supprimé ensuite.
+- **Hors usage normal.** L'outil n'est activable que par une variable d'environnement explicite, et
+  il est destiné à l'auteur des recettes, pas à l'utilisateur de BYKO.

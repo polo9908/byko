@@ -2,9 +2,10 @@
   "manifest_version": 3,
   "name": "BYKO — automatisation navigateur",
   "version": "0.1.0",
-  "description": "Pont entre BYKO et le navigateur. Phase ② : connexion seule, aucune automatisation, aucune page lue.",
+  "description": "Pont entre BYKO et le navigateur. Phase ③ : relève la structure des pages en liste blanche pour écrire les recettes, sans jamais lire les valeurs des champs.",
   "minimum_chrome_version": "105",
-  "permissions": ["nativeMessaging"],
+  "permissions": ["nativeMessaging", "scripting"],
+  "host_permissions": ["https://console.cloud.google.com/*"],
   "background": {
     "service_worker": "service-worker.js"
   }

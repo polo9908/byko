@@ -10,6 +10,7 @@ import { listConnectors } from "./connectors/registry"
 import * as connectorSetup from "./connectors/setup-pages"
 import { BrowserAutomationBridge } from "./browser-automation/bridge"
 import { browserAutomationSocketPath } from "./browser-automation/socket-path"
+import { BrowserAutomationRecon } from "./browser-automation/recon"
 import * as journal from "./journal"
 import * as autonomy from "./autonomy"
 import * as speech from "./speech"
@@ -397,13 +398,33 @@ app.whenReady().then(() => {
     return { text: cleanText, tickets: relevantTickets }
   })
 
-  // Phase ② du chantier d'automatisation navigateur : le pont seul, sans
-  // recette. Il ne sert qu'à savoir si l'extension est joignable et à mesurer
-  // un aller-retour (docs/ipc/browser-automation.md §9).
-  const browserAutomation = new BrowserAutomationBridge(browserAutomationSocketPath(), {
-    info: (message) => console.log(`[browser-automation] ${message}`),
-    warn: (message) => console.warn(`[browser-automation] ${message}`),
-  })
+  // Pont d'automatisation navigateur : état de la liaison, et exécution des
+  // recettes quand il y en aura (docs/ipc/browser-automation.md).
+  const automationLogger = {
+    info: (message: string) => console.log(`[browser-automation] ${message}`),
+    warn: (message: string) => console.warn(`[browser-automation] ${message}`),
+  }
+  const browserAutomation = new BrowserAutomationBridge(browserAutomationSocketPath(), automationLogger)
+
+  // Outil de maintenance, jamais actif en usage normal : relever la structure
+  // d'une page pour écrire les sélecteurs d'une recette, au lieu de les inventer
+  // (contrat, §13). Ne s'active que si la variable est posée explicitement.
+  const reconOrigin = process.env["BYKO_RECON_ORIGIN"]
+  const browserAutomationRecon = reconOrigin
+    ? new BrowserAutomationRecon({
+        bridge: { send: (message) => browserAutomation.sendToExtension(message) },
+        logger: automationLogger,
+        outputDir: app.getPath("userData"),
+        origin: reconOrigin,
+      })
+    : null
+  if (browserAutomationRecon) {
+    // L'extension peut se connecter après le démarrage : on attend qu'elle
+    // s'annonce pour lui demander le relevé.
+    browserAutomation.onConnected = () => browserAutomationRecon.request()
+    browserAutomation.onMessage = (message) => browserAutomationRecon.handleMessage(message)
+  }
+
   browserAutomation.start()
   app.on("before-quit", () => browserAutomation.stop())
 

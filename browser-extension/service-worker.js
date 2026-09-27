@@ -1,10 +1,14 @@
 /**
  * Pont côté navigateur.
  *
- * En phase ②, ce service worker ne fait qu'une chose : ouvrir le canal vers
- * BYKO et répondre aux pings. Aucune recette, aucune page lue, aucun accès au
- * DOM — l'extension ne déclare d'ailleurs aucune permission d'hôte : elle est
- * techniquement incapable de lire une page en l'état.
+ * Deux rôles, et rien d'autre :
+ * - ouvrir le canal vers BYKO et répondre aux pings (phase ②) ;
+ * - relever la structure d'un onglet en liste blanche à la demande de BYKO, pour
+ *   écrire les sélecteurs des recettes (phase ③, outil de maintenance).
+ *
+ * **Aucune valeur de champ n'est jamais lue ni transmise.** Une page de console
+ * affiche des secrets ; la seule façon sûre de ne pas les collecter est de ne
+ * jamais lire les valeurs. Voir `collectStructure` ci-dessous.
  *
  * Voir docs/ipc/browser-automation.md. Le nom de l'hôte doit correspondre à
  * celui qu'écrit scripts/install-native-host.mjs.
@@ -30,6 +34,112 @@ function scheduleRetry() {
   retryTimer = setTimeout(connect, delay)
 }
 
+/**
+ * Relevé de la structure d'une page. Exécuté **dans la page**.
+ *
+ * Contraintes : cette fonction est sérialisée par chrome.scripting, elle ne doit
+ * donc rien capturer de son environnement. Et elle ne lit jamais `.value` d'un
+ * champ — seulement des attributs sur liste blanche, et du texte visible tronqué
+ * pour les éléments qui en portent.
+ */
+function collectStructure() {
+  const KEEP_ATTRIBUTES = [
+    "id",
+    "role",
+    "aria-label",
+    "aria-labelledby",
+    "aria-expanded",
+    "aria-haspopup",
+    "aria-checked",
+    "name",
+    "type",
+    "placeholder",
+    "for",
+    "jsname",
+    "title",
+    "alt",
+    "data-testid",
+    "data-id",
+  ]
+  const CANDIDATES =
+    "a,button,input,select,textarea,summary,label,[role],[contenteditable=true],[jsname],[aria-label]"
+  const MAX_NODES = 400
+  const MAX_TEXT = 80
+  const MAX_ATTRIBUTE = 120
+
+  const nodes = []
+  for (const element of document.querySelectorAll(CANDIDATES)) {
+    if (nodes.length >= MAX_NODES) break
+
+    const rect = element.getBoundingClientRect()
+    if (rect.width === 0 && rect.height === 0) continue
+    if (element.getAttribute("aria-hidden") === "true") continue
+
+    const attributes = {}
+    for (const name of KEEP_ATTRIBUTES) {
+      const value = element.getAttribute(name)
+      if (typeof value === "string" && value !== "") attributes[name] = value.slice(0, MAX_ATTRIBUTE)
+    }
+
+    const tag = element.tagName.toLowerCase()
+    const controls = tag === "input" || tag === "textarea" || tag === "select"
+    // Les champs n'ont pas de texte propre : seule leur étiquette est reprise,
+    // jamais leur contenu.
+    const ownText = controls ? "" : (element.innerText || "").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT)
+    const label = attributes["aria-label"] || ownText || attributes.placeholder || ""
+
+    nodes.push({
+      tag,
+      role: attributes.role || null,
+      name: label || null,
+      selector: proposeSelector(tag, attributes),
+      attributes,
+    })
+  }
+
+  function proposeSelector(tag, attributes) {
+    if (attributes.id) return `#${attributes.id}`
+    for (const name of ["data-testid", "jsname", "name", "aria-label"]) {
+      const value = attributes[name]
+      if (value && !value.includes('"')) return `${tag}[${name}="${value}"]`
+    }
+    return tag
+  }
+
+  return nodes
+}
+
+async function handleRecon(message) {
+  const origin = String(message.origin || "")
+  try {
+    const [tab] = await chrome.tabs.query({ url: `${origin}/*` })
+    if (!tab || typeof tab.id !== "number") {
+      port.postMessage({
+        type: "reconFailed",
+        requestId: message.requestId,
+        reason: `aucun onglet ouvert sur ${origin}`,
+      })
+      return
+    }
+    const [injection] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: collectStructure,
+    })
+    port.postMessage({
+      type: "reconResult",
+      requestId: message.requestId,
+      url: tab.url || origin,
+      nodes: injection && injection.result ? injection.result : [],
+    })
+  } catch (error) {
+    port.postMessage({
+      type: "reconFailed",
+      requestId: message.requestId,
+      reason: error && error.message ? error.message : String(error),
+    })
+  }
+}
+
 function connect() {
   if (port) return
   clearTimeout(retryTimer)
@@ -48,6 +158,10 @@ function connect() {
     if (!message || typeof message !== "object") return
     if (message.type === "ping") {
       port.postMessage({ type: "pong", id: message.id })
+      return
+    }
+    if (message.type === "recon") {
+      void handleRecon(message)
       return
     }
     log(`message inattendu de BYKO : ${String(message.type)}`, "warn")

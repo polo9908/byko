@@ -91,6 +91,32 @@ export type BridgeMessage =
   | { type: "step"; runId: string; index: number; status: "ok" | "failed" | "waiting"; detail?: string }
   | { type: "capture"; runId: string; key: CaptureKey; value: string }
   | { type: "finished"; runId: string; outcome: "completed" | "paused" | "failed"; reason?: string }
+  // Reconnaissance — outil de maintenance, jamais activé en usage normal. Sert à
+  // écrire les sélecteurs d'une recette, puis à en proposer la réparation.
+  | { type: "recon"; requestId: string; origin: string }
+  | { type: "reconResult"; requestId: string; url: string; nodes: ReconNode[] }
+  | { type: "reconFailed"; requestId: string; reason: string }
+
+/**
+ * Élément interactif d'une page, tel que renvoyé par la reconnaissance.
+ *
+ * **Aucune valeur de champ n'y figure.** Les attributs sont sur liste blanche, et
+ * le texte visible est tronqué : une page de console affiche des secrets, et
+ * l'unique façon sûre de ne pas les collecter est de ne jamais lire les valeurs.
+ */
+export interface ReconNode {
+  tag: string
+  role: string | null
+  /** Libellé visible ou nom accessible, tronqué. `null` si l'élément est sans texte. */
+  name: string | null
+  /** Sélecteur CSS proposé, à confirmer à la main. */
+  selector: string
+  attributes: Readonly<Record<string, string>>
+}
+
+/** Bornes de la reconnaissance : une page de console en compte des centaines. */
+export const RECON_MAX_NODES = 400
+export const RECON_MAX_TEXT = 80
 
 /**
  * Nom du manifeste hôte de messagerie native. Il est écrit par

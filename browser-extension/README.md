@@ -59,8 +59,40 @@ l'identifiant, l'emplacement du manifeste hôte, et que Chrome a bien redémarr�
 
 - La reconnexion après un redémarrage de BYKO repose sur un `setTimeout` du
   service worker, que Chrome peut terminer avant qu'il ne se déclenche. Un
-  réveil fiable demandera l'API `alarms` — travail de la phase ③.
+  réveil fiable demandera l'API `alarms` — travail ultérieur.
 - Le helper est lancé via un script shell et le binaire Electron du projet : cela
   suffit pour développer, mais la distribution demandera un exécutable dédié
   signé et notarisé.
 - Une seule connexion est acceptée à la fois ; les suivantes sont fermées.
+
+## Outil de maintenance — relevé de structure d'une page
+
+Sert à écrire les sélecteurs d'une recette à partir des pages réelles, au lieu de
+les inventer. Jamais actif en usage normal.
+
+```sh
+npm run build
+BYKO_RECON_ORIGIN=https://console.cloud.google.com npx electron .
+```
+
+BYKO demande alors à l'extension de relever l'onglet **que tu as ouvert toi-même**
+sur cette origine, puis écrit le résultat dans un fichier `recon-<horodatage>.json`
+à la racine des données de l'application (`~/Library/Application Support/BYKO/`).
+Rien n'est navigué, rien n'est rempli, rien n'est cliqué.
+
+**Ce que le relevé contient** : pour chaque élément interactif visible, sa balise,
+son rôle, son libellé (tronqué), une proposition de sélecteur, et une liste fermée
+d'attributs — `id`, `aria-*`, `name`, `type`, `placeholder`, `jsname`,
+`data-testid`.
+
+**Ce qu'il ne contient jamais** : la valeur d'un champ. Le code ne lit pas
+`.value`, uniquement des attributs sur liste blanche.
+
+**La limite à connaître** : si une page *affiche* un secret en texte visible — ce
+qui arrive sur l'écran qui vient de créer un client OAuth — ce texte peut se
+retrouver dans le relevé, puisqu'il fait partie de la page. Pour cette page-là :
+crée un **client jetable**, relève, puis supprime le client.
+
+Toute modification du code de l'extension demande un rechargement dans
+`chrome://extensions` — Chrome ne le fait pas tout seul pour une extension non
+empaquetée.
