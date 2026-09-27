@@ -1,0 +1,330 @@
+/* Mode Point d'équipe (ticket B3), mesures relevées sur le prototype. */
+
+.pointdequipe-idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-top: 96px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.pointdequipe-eyebrow {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--bcc-color-text-muted);
+  margin: 0 0 8px;
+}
+
+.pointdequipe-title {
+  font-size: 44px;
+  font-weight: 600;
+  color: var(--bcc-color-text);
+  margin: 0 0 8px;
+}
+
+.pointdequipe-subtitle {
+  font-size: 17px;
+  color: var(--bcc-color-text-muted);
+  margin: 0 0 40px;
+}
+
+.pointdequipe-record-button {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bcc-color-surface);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pointdequipe-record-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ff3b30;
+}
+
+.pointdequipe-start-label {
+  margin: 16px 0 4px;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--bcc-color-text);
+}
+
+.pointdequipe-hint {
+  font-size: 13.5px;
+  color: var(--bcc-color-text-muted);
+  margin: 0;
+}
+
+.pointdequipe-back {
+  margin-top: 32px;
+}
+
+.pointdequipe-summary {
+  font-size: 15px;
+  color: var(--bcc-color-text);
+  white-space: pre-line;
+  text-align: left;
+  margin: 0 0 32px;
+}
+
+/* État enregistrement */
+.pointdequipe-recording {
+  max-width: 640px;
+  margin: 48px auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pointdequipe-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bcc-color-surface);
+  border-radius: 28px;
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.1);
+  padding: 14px 18px;
+}
+
+.pointdequipe-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff3b30;
+  flex-shrink: 0;
+  animation: pointdequipe-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pointdequipe-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+.pointdequipe-timer {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--bcc-color-text-muted);
+  flex-shrink: 0;
+  width: 36px;
+}
+
+.pointdequipe-waveform {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+}
+
+.pointdequipe-wave-bar {
+  width: 2px;
+  min-height: 2px;
+  border-radius: 1px;
+  background: var(--bcc-color-text);
+  transition: height 0.1s ease;
+}
+
+.pointdequipe-stop-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 17px;
+  padding: 0 14px;
+  height: 34px;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--bcc-color-text);
+  font-family: inherit;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.pointdequipe-stop-icon {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  background: var(--bcc-color-text);
+}
+
+.pointdequipe-transcript-unavailable {
+  margin-top: 16px;
+  max-width: 480px;
+  text-align: center;
+}
+
+.pointdequipe-transcript {
+  width: 100%;
+  margin-top: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pointdequipe-transcript-line {
+  font-size: 15px;
+  color: var(--bcc-color-text);
+  margin: 0;
+}
+
+/* Décisions/tâches extraites en direct (voir addItemAnimated dans PointDEquipeView.tsx) */
+.pointdequipe-live-sections {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 28px;
+  text-align: left;
+}
+
+.pointdequipe-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bcc-color-text-muted);
+  margin: 0 0 10px;
+}
+
+.pointdequipe-section-empty {
+  font-size: 14px;
+  color: var(--bcc-color-text-muted);
+  margin: 0;
+}
+
+.pointdequipe-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pointdequipe-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 400ms ease,
+    transform 400ms ease;
+}
+
+.pointdequipe-item--in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.pointdequipe-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 7px;
+  background: var(--bcc-color-accent);
+}
+
+.pointdequipe-item[data-type="task"] .pointdequipe-item-dot {
+  background: var(--bcc-color-success);
+}
+
+.pointdequipe-item-text {
+  font-size: 15px;
+  color: var(--bcc-color-text);
+  flex: 1;
+}
+
+.pointdequipe-caret {
+  display: inline-block;
+  width: 2px;
+  height: 14px;
+  margin-left: 1px;
+  vertical-align: -2px;
+  background: var(--bcc-color-text);
+  animation: pointdequipe-pulse 900ms step-end infinite;
+}
+
+.pointdequipe-item-jira {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  color: var(--bcc-color-text-muted);
+}
+
+.pointdequipe-item-jira--saved {
+  color: var(--bcc-color-success);
+}
+
+.pointdequipe-item-jira--saved a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.pointdequipe-item-jira--error {
+  color: var(--bcc-color-danger);
+}
+
+/* Édition post-enregistrement (correction des fautes de transcription) */
+.pointdequipe-summary-edit {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  font: inherit;
+  font-size: 15px;
+  color: var(--bcc-color-text);
+  background: var(--bcc-color-surface);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin: 0 0 24px;
+  text-align: left;
+}
+
+.pointdequipe-summary-edit:hover,
+.pointdequipe-summary-edit:focus {
+  border-color: var(--bcc-color-text-muted);
+  outline: none;
+}
+
+.pointdequipe-item-edit-button {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--bcc-color-text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.pointdequipe-item:hover .pointdequipe-item-edit-button {
+  opacity: 1;
+}
+
+.pointdequipe-item-edit-input {
+  flex: 1;
+  font: inherit;
+  font-size: 15px;
+  color: var(--bcc-color-text);
+  background: var(--bcc-color-surface);
+  border: 1px solid var(--bcc-color-text-muted);
+  border-radius: 6px;
+  padding: 2px 6px;
+}

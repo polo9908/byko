@@ -1,5 +1,21 @@
+node_modules
+dist
+out
+.DS_Store
+*.log*
+.env
+.env.*
+!.env.example
+build/Icon
+release
+
 # Outils internes de développement — pas destinés au dépôt public
 .claude/
-docs/tickets/
-handoff.md
 .docs/
+handoff.md
+docs/backlog/
+docs/qa-reports/
+docs/tickets/
+
+# Scratch des outils (Qwen Code) : extractions et scripts jetables
+.qwen/tmp/

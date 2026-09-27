@@ -1,0 +1,54 @@
+/**
+ * Design tokens relevés sur le prototype BCC (`BCC Medium.html`).
+ * Partagés par tous les écrans d'onboarding (A1-A5) et, plus tard,
+ * par la vue journée / Journal / Réglages.
+ */
+:root {
+  --bcc-color-bg: #f4f1ec;
+  --bcc-color-surface: #ffffff;
+  --bcc-color-text: #1d1d1f;
+  --bcc-color-text-muted: #736b61;
+  --bcc-color-border: rgba(29, 29, 31, 0.1);
+  --bcc-color-accent: #0c66e4; /* bleu Atlassian, utilisé pour l'action "Créer un jeton Jira" */
+  --bcc-color-success: #1a7f37;
+  --bcc-color-danger: #c0392b;
+
+  --bcc-radius-card: 20px;
+  --bcc-radius-control: 12px;
+  --bcc-radius-pill: 999px;
+
+  --bcc-font-sans:
+    "Geist", -apple-system, BlinkMacSystemFont, "system-ui", system-ui, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bcc-color-bg);
+  color: var(--bcc-color-text);
+  font-family: var(--bcc-font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Bouton Journal flottant (voir App.tsx) : seul accès au Journal sur Point d'équipe, qui n'a pas d'en-tête. */
+.global-journal-button {
+  position: fixed;
+  top: 24px;
+  right: 40px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 15px;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--bcc-color-text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}

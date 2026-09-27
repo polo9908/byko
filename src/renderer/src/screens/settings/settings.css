@@ -1,0 +1,447 @@
+/* Modale Réglages (ticket D1), fidèle au prototype BCC Medium.html. */
+
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(29, 29, 31, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+}
+
+.settings-modal {
+  width: 100%;
+  max-width: 560px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bcc-color-surface);
+  border-radius: var(--bcc-radius-card);
+  box-shadow: 0 24px 64px rgba(29, 29, 31, 0.25);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 24px 0;
+}
+
+.settings-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.settings-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bcc-color-bg);
+  color: var(--bcc-color-text);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-section-label {
+  padding: 20px 24px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bcc-color-text-muted);
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+}
+
+.settings-row[role="button"] {
+  cursor: pointer;
+}
+
+.settings-row-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.settings-row-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-row-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.settings-row-subtitle {
+  font-size: 13px;
+  color: var(--bcc-color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.settings-row-subtitle--warning {
+  color: var(--bcc-color-danger);
+  font-weight: 600;
+}
+
+.settings-row-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.settings-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.settings-guide-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--bcc-color-accent);
+  font-family: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-guide-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.settings-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bcc-color-success);
+}
+
+.settings-chevron {
+  color: var(--bcc-color-text-muted);
+  font-size: 12px;
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.settings-chevron--open {
+  transform: rotate(90deg);
+}
+
+.settings-connect-button {
+  border: 1px solid var(--bcc-color-border);
+  background: var(--bcc-color-surface);
+  border-radius: var(--bcc-radius-pill);
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bcc-color-text);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.settings-connect-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.settings-detail {
+  padding: 0 24px 16px 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.settings-rotate-button {
+  border: none;
+  border-radius: 18px;
+  padding: 0 16px;
+  height: 36px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--bcc-color-accent);
+  cursor: pointer;
+}
+
+.settings-rotate-button--submit {
+  background: var(--bcc-color-text);
+}
+
+.settings-rotate-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.settings-detail-input {
+  width: 100%;
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-control);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--bcc-color-text);
+  background: var(--bcc-color-bg);
+}
+
+/* Jetons et clés API : chasse fixe, plus facile à relire caractère par caractère. */
+.settings-detail-input--mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.settings-detail-hint {
+  font-size: 12.5px;
+  color: var(--bcc-color-text-muted);
+}
+
+.settings-detail-error {
+  font-size: 13px;
+  color: var(--bcc-color-danger);
+  margin: 0;
+}
+
+.settings-ai-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  width: 100%;
+}
+
+.settings-ai-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 9px;
+  background: var(--bcc-color-surface);
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--bcc-color-text);
+  cursor: pointer;
+}
+
+.settings-ai-card--active {
+  border: 1.5px solid #0071e3;
+  background: rgba(0, 113, 227, 0.05);
+}
+
+.settings-ai-card-icon {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px 20px;
+  margin-top: 12px;
+  border-top: 1px solid var(--bcc-color-border);
+  font-size: 12px;
+  color: var(--bcc-color-text-muted);
+}
+
+.settings-footer-lock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.settings-detail-warning {
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: var(--bcc-radius-control);
+  border: 1px solid rgba(192, 57, 43, 0.25);
+  background: rgba(192, 57, 43, 0.06);
+  color: var(--bcc-color-text);
+}
+
+/* Assistant de connexion guidée (Google Agenda, Jira, IA, Figma et guides des connecteurs à venir).
+   Les URL ne sont jamais construites ici : chaque étape « Ouvrir ↗ » appelle un canal IPC qui
+   résout l'adresse côté main depuis une liste blanche. Réutilisable hors modale (onboarding). */
+.setup-wizard {
+  margin: 4px 24px 16px;
+  padding: 16px;
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-control);
+  background: var(--bcc-color-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setup-wizard-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.setup-wizard-intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--bcc-color-text-muted);
+}
+
+.setup-wizard-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setup-wizard-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--bcc-radius-control);
+  background: var(--bcc-color-surface);
+}
+
+.setup-wizard-step-number {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bcc-color-text);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.setup-wizard-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.setup-wizard-step-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.setup-wizard-step-body {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--bcc-color-text-muted);
+}
+
+.setup-wizard-open {
+  white-space: nowrap;
+}
+
+.setup-wizard-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setup-wizard-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.setup-wizard-label .settings-detail-input {
+  box-sizing: border-box;
+  font-size: 13px;
+  background: var(--bcc-color-surface);
+}
+
+.setup-wizard-select {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-control);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--bcc-color-text);
+  background: var(--bcc-color-surface);
+}
+
+.setup-wizard-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.setup-wizard-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.setup-wizard-waiting-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.setup-wizard-waiting .settings-detail-hint {
+  margin: 0;
+}
+
+/* Fenêtre étroite : le bouton « Ouvrir » passe sous le texte au lieu de l'écraser. */
+@media (max-width: 520px) {
+  .setup-wizard-step {
+    flex-wrap: wrap;
+  }
+
+  .setup-wizard-open {
+    margin-left: 32px;
+  }
+}
