@@ -474,9 +474,14 @@ contre un serveur factice, messages entiers *et* messages découpés en morceaux
 testé contre l'application réelle lancée sur un profil isolé — socket en `0600`, ping reçu,
 aller-retour confirmé en 2 ms.
 
-**Non vérifié** : le trajet complet avec Chrome. Il demande de charger l'extension à la main
-dans `chrome://extensions`, ce qu'aucun outil ne peut faire à la place de l'utilisateur — voir la
-procédure dans `browser-extension/README.md`.
+**Trajet complet vérifié le 27/09/2026, avec Chrome.** L'extension chargée dans Chrome s'est
+reconnectée toute seule au pont au lancement de BYKO (≈2 s), aller-retour confirmé en 1 ms :
+extension → messagerie native → lanceur → helper → socket local → main, puis retour. À noter, un
+premier essai avait échoué : le pont n'accepte **qu'un interlocuteur à la fois**, et l'extension
+réelle tenait déjà la connexion — c'est le comportement voulu, pas une panne.
+
+Restent non vérifiés : la reconnexion après un redémarrage complet de Chrome (mécanisme
+`onStartup`), et Windows, écarté de cette phase.
 
 **Audit QA non passé** : `qa-log-auditor` est défini avec `model: opus`, indisponible dans
 l'environnement actuel (même cause que l'échec de l'orchestrateur). Le pont est une zone
