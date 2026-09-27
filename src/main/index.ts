@@ -429,7 +429,13 @@ app.whenReady().then(() => {
   // l'éprouver ; le bouton « connexion auto » de l'interface viendra le
   // remplacer, sans changer cette mécanique.
   const agentGoal = process.env["BYKO_AGENT_GOAL"]
-  const agentOrigin = normalizeUrlPrefix(process.env["BYKO_AGENT_ORIGIN"] ?? "")
+  const agentUrl = process.env["BYKO_AGENT_URL"] ?? ""
+  let agentOrigin: string | null = null
+  try {
+    if (agentUrl !== "") agentOrigin = `${new URL(agentUrl).origin}/`
+  } catch {
+    automationLogger.warn(`BYKO_AGENT_URL illisible, pilotage désactivé : ${agentUrl}`)
+  }
   const agent =
     agentGoal && agentOrigin
       ? new BrowserAutomationAgent({
@@ -437,7 +443,9 @@ app.whenReady().then(() => {
           logger: automationLogger,
           complete: (prompt) => aiProvider.complete(prompt),
           goal: agentGoal,
-          urlPrefix: agentOrigin,
+          targetUrl: agentUrl,
+          // Périmètre : l'origine de la page visée, et rien d'autre.
+          allowedOrigins: [agentOrigin],
           applyCredentials: async (clientId, clientSecret) => {
             // Première étape : vérifier qu'on sait les lire. Le branchement réel
             // passe par `applyCapturedValues`, qui enchaîne le flux OAuth — c'est

@@ -21,8 +21,14 @@ export interface AgentOptions {
   complete: (prompt: string) => Promise<string>
   /** Ce qu'on cherche à obtenir, en clair, à destination du modèle. */
   goal: string
-  /** Préfixe d'URL autorisé : la liste blanche d'origines. */
-  urlPrefix: string
+  /** Page que BYKO ouvre lui-même, et sur laquelle la boucle travaille. */
+  targetUrl: string
+  /**
+   * Origines autorisées. BYKO n'ouvre que dans ce périmètre, et **arrête la
+   * boucle** si la page en sort : un lien suivi de travers ne doit pas emmener
+   * l'automatisation ailleurs sur le web.
+   */
+  allowedOrigins: readonly string[]
   /** Remet les identifiants trouvés au connecteur concerné. */
   applyCredentials: (clientId: string, clientSecret: string) => Promise<void>
   /** Nombre d'actions passées gardées dans le contexte du modèle. */
@@ -66,6 +72,7 @@ export class BrowserAutomationAgent {
   private readonly pending = new Map<string, Pending>()
   private readonly historyLimit: number
   private lastRefs: ReadonlySet<string> = new Set()
+  private tabId: number | null = null
 
   constructor(private readonly options: AgentOptions) {
     this.historyLimit = options.historyLimit ?? 12
@@ -102,6 +109,11 @@ export class BrowserAutomationAgent {
     this.history.length = 0
 
     try {
+      if (!this.isAllowed(this.options.targetUrl)) {
+        return this.finish("failed", `Page hors périmètre : ${this.options.targetUrl}`)
+      }
+      if (!(await this.openTab())) return
+
       while (this.step < AGENT_MAX_STEPS) {
         if (this.cancelled) return this.finish("cancelled", "Automatisation annulée.")
 
@@ -139,22 +151,57 @@ export class BrowserAutomationAgent {
     }
   }
 
+  /** BYKO ouvre la page : l'onglet est le sien, pas « un onglet qui ressemble ». */
+  private async openTab(): Promise<boolean> {
+    const requestId = randomUUID()
+    this.detail = "Ouverture de la page…"
+    const reply = await this.request(requestId, { type: "openTab", requestId, url: this.options.targetUrl })
+
+    if (reply.type === "tabOpenFailed") {
+      this.finish("failed", `Page non ouverte : ${reply.reason}`)
+      return false
+    }
+    if (reply.type !== "tabOpened") {
+      this.finish("failed", "Réponse inattendue de l'extension à l'ouverture.")
+      return false
+    }
+    this.tabId = reply.tabId
+    if (!this.isAllowed(reply.url)) {
+      // La page a redirigé ailleurs : on ne continue pas à l'aveugle.
+      this.finish("failed", `La page a redirigé hors périmètre : ${reply.url}`)
+      return false
+    }
+    return true
+  }
+
+  private isAllowed(url: string): boolean {
+    return this.options.allowedOrigins.some((origin) => url.startsWith(origin))
+  }
+
+  private requireTabId(): number {
+    if (this.tabId === null) throw new Error("Aucun onglet cible.")
+    return this.tabId
+  }
+
   private async observe(): Promise<{ url: string; elements: ObservedElement[] } | null> {
     const requestId = randomUUID()
     const reply = await this.request(requestId, {
       type: "observe",
       requestId,
-      urlPrefix: this.options.urlPrefix,
+      tabId: this.requireTabId(),
     })
 
     if (reply.type === "observeFailed") {
-      // Un onglet absent n'est pas une panne de l'automatisation : c'est à BYKO
-      // d'ouvrir la page avant de lancer la boucle.
+      // Un onglet fermé par l'utilisateur n'est pas une panne de l'automatisation.
       this.finish("failed", reply.reason)
       return null
     }
     if (reply.type !== "observation") {
       this.finish("failed", "Réponse inattendue de l'extension.")
+      return null
+    }
+    if (!this.isAllowed(reply.url)) {
+      this.finish("failed", `La page a quitté le périmètre autorisé : ${reply.url}`)
       return null
     }
 
@@ -201,7 +248,7 @@ export class BrowserAutomationAgent {
     const reply = await this.request(requestId, {
       type: "act",
       requestId,
-      urlPrefix: this.options.urlPrefix,
+      tabId: this.requireTabId(),
       action,
     })
 
@@ -230,7 +277,7 @@ export class BrowserAutomationAgent {
     const reply = await this.request(requestId, {
       type: "captureCredentials",
       requestId,
-      urlPrefix: this.options.urlPrefix,
+      tabId: this.requireTabId(),
     })
     if (reply.type !== "credentials") {
       return this.finish("failed", "Réponse inattendue de l'extension.")

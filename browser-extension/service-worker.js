@@ -308,35 +308,81 @@ function readCredentials() {
   return { clientId, clientSecret }
 }
 
-/** Retrouve l'onglet ouvert sur un préfixe d'URL, ou rend `null`. */
-async function findTab(urlPrefix) {
-  const [tab] = await chrome.tabs.query({ url: `${urlPrefix}*` })
-  return tab && typeof tab.id === "number" ? tab : null
-}
-
 /** Injecte une fonction dans l'onglet visé et rend son résultat. */
 async function inject(tabId, func, args) {
   const [injection] = await chrome.scripting.executeScript({ target: { tabId }, func, args })
   return injection ? injection.result : undefined
 }
 
-async function handleObserve(message) {
-  const urlPrefix = String(message.urlPrefix || "")
+/** Vérifie qu'un onglet existe encore ; rend `null` sinon. */
+async function ensureTab(tabId) {
+  if (typeof tabId !== "number") return null
   try {
-    const tab = await findTab(urlPrefix)
+    return await chrome.tabs.get(tabId)
+  } catch {
+    return null
+  }
+}
+
+/** Attend le chargement complet d'un onglet, sans jamais bloquer indéfiniment. */
+function waitForComplete(tabId, timeoutMs) {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer)
+      chrome.tabs.onUpdated.removeListener(listener)
+      resolve()
+    }
+    const timer = setTimeout(done, timeoutMs)
+    function listener(updatedId, info) {
+      if (updatedId === tabId && info.status === "complete") done()
+    }
+    chrome.tabs.onUpdated.addListener(listener)
+  })
+}
+
+/**
+ * BYKO ouvre son propre onglet et en garde le numéro.
+ *
+ * C'est la différence entre « travailler sur l'onglet que BYKO vient d'ouvrir »
+ * et « travailler sur le premier onglet qui ressemble » — avec plusieurs onglets
+ * de console ouverts, la seconde formule est un tirage au sort.
+ */
+async function handleOpenTab(message) {
+  try {
+    const tab = await chrome.tabs.create({ url: String(message.url || ""), active: true })
+    if (typeof tab.id !== "number") {
+      port.postMessage({ type: "tabOpenFailed", requestId: message.requestId, reason: "onglet créé sans numéro" })
+      return
+    }
+    await waitForComplete(tab.id, 20000)
+    const current = await ensureTab(tab.id)
+    port.postMessage({
+      type: "tabOpened",
+      requestId: message.requestId,
+      tabId: tab.id,
+      url: (current && current.url) || "",
+    })
+  } catch (error) {
+    port.postMessage({
+      type: "tabOpenFailed",
+      requestId: message.requestId,
+      reason: error && error.message ? error.message : String(error),
+    })
+  }
+}
+
+async function handleObserve(message) {
+  try {
+    const tab = await ensureTab(message.tabId)
     if (!tab) {
-      port.postMessage({
-        type: "observeFailed",
-        requestId: message.requestId,
-        reason: `aucun onglet ouvert sur ${urlPrefix}`,
-      })
+      port.postMessage({ type: "observeFailed", requestId: message.requestId, reason: "onglet fermé" })
       return
     }
     const elements = (await inject(tab.id, observePage, [message.maxElements || 250])) || []
     port.postMessage({
       type: "observation",
       requestId: message.requestId,
-      url: tab.url || urlPrefix,
+      url: tab.url || "",
       elements,
     })
   } catch (error) {
@@ -350,9 +396,9 @@ async function handleObserve(message) {
 
 async function handleAct(message) {
   try {
-    const tab = await findTab(message.urlPrefix)
+    const tab = await ensureTab(message.tabId)
     if (!tab) {
-      port.postMessage({ type: "actResult", requestId: message.requestId, ok: false, detail: "onglet disparu" })
+      port.postMessage({ type: "actResult", requestId: message.requestId, ok: false, detail: "onglet fermé" })
       return
     }
     const result = (await inject(tab.id, performAction, [message.action])) || { ok: false, detail: "sans réponse" }
@@ -368,13 +414,14 @@ async function handleAct(message) {
 }
 
 async function handleCaptureCredentials(message) {
+  const missing = { clientId: null, clientSecret: null }
   try {
-    const tab = await findTab(message.urlPrefix)
+    const tab = await ensureTab(message.tabId)
     if (!tab) {
-      port.postMessage({ type: "credentials", requestId: message.requestId, clientId: null, clientSecret: null })
+      port.postMessage({ type: "credentials", requestId: message.requestId, ...missing })
       return
     }
-    const found = (await inject(tab.id, readCredentials, [])) || { clientId: null, clientSecret: null }
+    const found = (await inject(tab.id, readCredentials, [])) || missing
     port.postMessage({
       type: "credentials",
       requestId: message.requestId,
@@ -382,7 +429,7 @@ async function handleCaptureCredentials(message) {
       clientSecret: found.clientSecret,
     })
   } catch {
-    port.postMessage({ type: "credentials", requestId: message.requestId, clientId: null, clientSecret: null })
+    port.postMessage({ type: "credentials", requestId: message.requestId, ...missing })
   }
 }
 
@@ -408,6 +455,10 @@ function connect() {
     }
     if (message.type === "recon") {
       void handleRecon(message)
+      return
+    }
+    if (message.type === "openTab") {
+      void handleOpenTab(message)
       return
     }
     if (message.type === "observe") {

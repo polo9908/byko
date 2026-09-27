@@ -96,14 +96,19 @@ export type BridgeMessage =
   | { type: "recon"; requestId: string; urlPrefix: string }
   | { type: "reconResult"; requestId: string; url: string; nodes: ReconNode[] }
   | { type: "reconFailed"; requestId: string; reason: string }
-  // Pilotage par IA (§3.3) : BYKO demande une observation, l'IA choisit une
-  // action, on l'exécute. Puis, hors boucle, la lecture des identifiants.
-  | { type: "observe"; requestId: string; urlPrefix: string }
+  // Pilotage par IA (§3.3) : BYKO ouvre son propre onglet, en prend le numéro,
+  // puis observe et agit **sur cet onglet-là**. Jamais « le premier qui
+  // correspond » : avec plusieurs onglets de console ouverts, ce serait un
+  // tirage au sort.
+  | { type: "openTab"; requestId: string; url: string }
+  | { type: "tabOpened"; requestId: string; tabId: number; url: string }
+  | { type: "tabOpenFailed"; requestId: string; reason: string }
+  | { type: "observe"; requestId: string; tabId: number }
   | { type: "observation"; requestId: string; url: string; elements: ObservedElement[] }
   | { type: "observeFailed"; requestId: string; reason: string }
-  | { type: "act"; requestId: string; urlPrefix: string; action: AgentAction }
+  | { type: "act"; requestId: string; tabId: number; action: AgentAction }
   | { type: "actResult"; requestId: string; ok: boolean; detail?: string }
-  | { type: "captureCredentials"; requestId: string; urlPrefix: string }
+  | { type: "captureCredentials"; requestId: string; tabId: number }
   | { type: "credentials"; requestId: string; clientId: string | null; clientSecret: string | null }
 
 /**
@@ -194,6 +199,9 @@ const BRIDGE_MESSAGE_TYPE_MAP: Record<BridgeMessage["type"], true> = {
   observe: true,
   observation: true,
   observeFailed: true,
+  openTab: true,
+  tabOpened: true,
+  tabOpenFailed: true,
   act: true,
   actResult: true,
   captureCredentials: true,

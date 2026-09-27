@@ -522,6 +522,22 @@ La phase ③ se décompose en quatre morceaux, dont un seul est fait :
 | La recette Google Agenda | recette + pages | **Non commencée** — bloquée sur l'obtention des sélecteurs réels (voir §13) |
 | Le déclencheur | IPC, preload, bouton « Connecter », affichage de la progression | **Non commencé.** Volontairement reporté : sans recette à déclencher, il n'y aurait rien à exposer |
 
+### 12.1 L'onglet est celui de BYKO, et il est vérifié
+
+Premier essai réel sur la vraie console : l'automatisation a travaillé sur **le mauvais onglet**.
+Elle cherchait « le premier onglet correspondant à l'adresse » — et l'utilisateur en avait
+plusieurs d'ouverts dans la section OAuth. Le modèle a d'ailleurs eu raison de s'en plaindre :
+sur cet onglet-là, il n'y avait pas d'entrée « Audience ».
+
+**Correction** : `main` demande à l'extension d'**ouvrir elle-même** la page, en reçoit le numéro
+d'onglet, et toutes les demandes suivantes — observation, action, lecture des identifiants —
+visent **ce numéro-là**. Plus aucune sélection par ressemblance d'adresse.
+
+Le périmètre est vérifié à **trois** moments, pas seulement au départ : l'URL visée doit être
+dans les origines autorisées avant l'ouverture ; l'URL effectivement ouverte aussi (au cas où la
+page aurait redirigé) ; et l'URL de **chaque** observation. Une page qui sort du périmètre arrête
+la boucle au lieu d'être suivie.
+
 `apply.ts` est délibérément le seul fichier qui connaisse les connecteurs : ajouter Jira ou Figma
 consiste à y ajouter un cas, sans toucher à l'exécution des recettes. Les connecteurs qui n'ont
 pas encore de chaîne lèvent une erreur explicite plutôt que de faire semblant.
