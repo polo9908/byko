@@ -85,6 +85,26 @@ auditabilité (`CLAUDE.md` impose `qa-log-auditor` sur les zones sensibles, or u
 par un modèle à chaque clic n'est pas relisible) ; et fuite du contenu de pages contenant des
 identifiants vers un fournisseur d'IA tiers.
 
+**Précision du 27/09/2026 — l'IA n'intervient qu'en réparation, jamais au vol.** Le pilotage à
+l'exécution reste écarté, mais une aide est prévue : quand un sélecteur cesse de correspondre,
+l'IA propose le sélecteur corrigé à partir de la structure de la page, un humain le valide, et il
+est commité. Aucun appel d'IA n'a lieu sur la machine de l'utilisateur, aucun jeton n'est dépensé
+à l'usage, et la recette livrée reste déterministe et relisible.
+
+Deux raisons, dans l'ordre d'importance :
+
+1. **Les pages automatisées affichent les secrets qu'on récupère** — le Client Secret, le jeton
+   Atlassian, le jeton Figma. Une IA qui « regarde » ces pages enverrait ces secrets à un
+   fournisseur tiers, sur l'écran même où ils naissent.
+2. Un pilotage à l'exécution n'est ni reproductible ni auditable, alors que `CLAUDE.md` impose un
+   audit des zones sensibles.
+
+Un repli d'IA à l'exécution — sur structure de page assainie, et seulement pour les étapes qui ne
+touchent à aucun secret — reste une option ouverte, à construire plus tard si les recettes se
+révèlent pénibles à maintenir. Ce filtre d'assainissement serait alors du code critique, testé
+comme tel : un DOM porte des valeurs dans ses attributs, et une seule erreur de filtre est une
+fuite.
+
 ### 3.4 Posé par l'utilisateur le 27/09/2026 — le minimum de clavier et de souris
 
 Le but de BYKO est que l'utilisateur touche le moins possible au clavier et à la souris. Une
@@ -487,3 +507,38 @@ Restent non vérifiés : la reconnexion après un redémarrage complet de Chrome
 l'environnement actuel (même cause que l'échec de l'orchestrateur). Le pont est une zone
 sensible au sens de `CLAUDE.md` — nouvel accès système, nouveau processus, nouvel identifiant
 d'extension comme ancre de confiance — donc l'audit reste dû.
+
+## 12. Phase ③ — état au 27/09/2026
+
+La phase ③ se décompose en quatre morceaux, dont un seul est fait :
+
+| Morceau | Fichiers | État |
+|---|---|---|
+| La chaîne de capture générique | `shared/browserAutomation.ts` (modèle de recette + protocole), `main/browser-automation/runner.ts` (machine à états), `main/browser-automation/apply.ts` (couture vers les intégrations) | **Fait.** Testé hors application par 22 assertions : démarrage, progression, captures complètes et incomplètes, échecs, refus du connecteur, annulation, expiration, non-fuite des valeurs dans les journaux |
+| L'exécuteur côté extension | content script + permissions d'hôte | **Non commencé.** Chaque modification de l'extension demande un rechargement manuel dans `chrome://extensions`, donc cette partie n'est pas vérifiable depuis l'atelier |
+| La recette Google Agenda | recette + pages | **Non commencée** — bloquée sur l'obtention des sélecteurs réels (voir §13) |
+| Le déclencheur | IPC, preload, bouton « Connecter », affichage de la progression | **Non commencé.** Volontairement reporté : sans recette à déclencher, il n'y aurait rien à exposer |
+
+`apply.ts` est délibérément le seul fichier qui connaisse les connecteurs : ajouter Jira ou Figma
+consiste à y ajouter un cas, sans toucher à l'exécution des recettes. Les connecteurs qui n'ont
+pas encore de chaîne lèvent une erreur explicite plutôt que de faire semblant.
+
+## 13. Où vivent les sélecteurs — et pourquoi c'est un problème
+
+Aucune des pages à automatiser n'est accessible sans une session authentifiée (Cloud Console,
+Atlassian, Figma, les consoles IA). Leur DOM ne peut donc pas être lu depuis l'atelier, et des
+sélecteurs inventés produiraient une recette qui ne fonctionne pas. Trois voies ont été
+examinées :
+
+- **Piloter le Chrome de l'utilisateur.** Écarté : l'IA navigateur de Qwen n'est pas configurée
+  dans cet environnement, et surtout **Chrome refuse le débogage distant sur un profil par
+  défaut** — « *from Chrome 136 … switches will no longer be respected if attempting to debug
+  the default Chrome data directory* ». C'est une protection délibérée : aucun outil externe ne
+  doit s'emparer des sessions de l'utilisateur. Playwright tombe sous le coup de cette règle,
+  et une extension MV3 ne peut de toute façon pas exécuter Playwright.
+- **Relever les sélecteurs à la main**, dans une session dédiée, puis les écrire dans la recette.
+- **Un mode enregistreur** dans l'extension : l'utilisateur fait le parcours une fois, les
+  sélecteurs sont observés plutôt que devinés.
+
+Ces trois voies restent ouvertes. Ce qui est certain, c'est que **la mécanique de la phase ③ n'en
+dépend pas** : la chaîne de capture est écrite, testée, et ne connaît aucun sélecteur.
