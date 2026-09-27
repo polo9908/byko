@@ -111,6 +111,12 @@ export interface ReconNode {
   name: string | null
   /** Sélecteur CSS proposé, à confirmer à la main. */
   selector: string
+  /**
+   * `true` si l'élément vit dans un shadow root. La console Google est bâtie en
+   * composants web : un `querySelector` ordinaire ne voit alors que la coquille.
+   * Un exécuteur de recette devra descendre les shadow roots pour l'atteindre.
+   */
+  shadow: boolean
   attributes: Readonly<Record<string, string>>
 }
 

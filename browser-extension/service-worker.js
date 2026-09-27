@@ -68,33 +68,49 @@ function collectStructure() {
   const MAX_ATTRIBUTE = 120
 
   const nodes = []
-  for (const element of document.querySelectorAll(CANDIDATES)) {
-    if (nodes.length >= MAX_NODES) break
 
-    const rect = element.getBoundingClientRect()
-    if (rect.width === 0 && rect.height === 0) continue
-    if (element.getAttribute("aria-hidden") === "true") continue
-
-    const attributes = {}
-    for (const name of KEEP_ATTRIBUTES) {
-      const value = element.getAttribute(name)
-      if (typeof value === "string" && value !== "") attributes[name] = value.slice(0, MAX_ATTRIBUTE)
+  // La console Google est bâtie sur des composants web : sans descendre dans les
+  // shadow roots, on ne relève que la coquille (barre de navigation, recherche)
+  // et on croit qu'une page est vide alors que son formulaire est à l'intérieur
+  // d'un composant.
+  const roots = [document]
+  for (let index = 0; index < roots.length && roots.length < 40; index += 1) {
+    for (const element of roots[index].querySelectorAll("*")) {
+      if (element.shadowRoot) roots.push(element.shadowRoot)
     }
+  }
 
-    const tag = element.tagName.toLowerCase()
-    const controls = tag === "input" || tag === "textarea" || tag === "select"
-    // Les champs n'ont pas de texte propre : seule leur étiquette est reprise,
-    // jamais leur contenu.
-    const ownText = controls ? "" : (element.innerText || "").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT)
-    const label = attributes["aria-label"] || ownText || attributes.placeholder || ""
+  for (const root of roots) {
+    if (nodes.length >= MAX_NODES) break
+    for (const element of root.querySelectorAll(CANDIDATES)) {
+      if (nodes.length >= MAX_NODES) break
 
-    nodes.push({
-      tag,
-      role: attributes.role || null,
-      name: label || null,
-      selector: proposeSelector(tag, attributes),
-      attributes,
-    })
+      const rect = element.getBoundingClientRect()
+      if (rect.width === 0 && rect.height === 0) continue
+      if (element.getAttribute("aria-hidden") === "true") continue
+
+      const attributes = {}
+      for (const name of KEEP_ATTRIBUTES) {
+        const value = element.getAttribute(name)
+        if (typeof value === "string" && value !== "") attributes[name] = value.slice(0, MAX_ATTRIBUTE)
+      }
+
+      const tag = element.tagName.toLowerCase()
+      const controls = tag === "input" || tag === "textarea" || tag === "select"
+      // Les champs n'ont pas de texte propre : seule leur étiquette est reprise,
+      // jamais leur contenu.
+      const ownText = controls ? "" : (element.innerText || "").replace(/\s+/g, " ").trim().slice(0, MAX_TEXT)
+      const label = attributes["aria-label"] || ownText || attributes.placeholder || ""
+
+      nodes.push({
+        tag,
+        role: attributes.role || null,
+        name: label || null,
+        selector: proposeSelector(tag, attributes),
+        shadow: root !== document,
+        attributes,
+      })
+    }
   }
 
   function proposeSelector(tag, attributes) {

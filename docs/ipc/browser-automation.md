@@ -596,3 +596,18 @@ qu'**après** création : le relever suppose donc de créer un client, qui devra
 ensuite. Les quatre autres pages se relèvent sans rien créer. Et le relevé d'un compte connecté
 contient des données personnelles (nom, adresse de messagerie dans les libellés de la barre de
 compte) : ce fichier ne doit jamais être versionné.
+
+**Le piège des composants web.** La console est bâtie en composants web (`cfc-panel`, `cm-icon`,
+`pfc-platform-bar-button`…). Un `document.querySelectorAll` **ne descend pas dans les shadow
+roots** : le premier relevé de la page de création de client a donc renvoyé 107 éléments — la
+coquille (recherche, navigation, compte) — et **aucun formulaire**, alors que la page en a un.
+Le collecteur parcourt désormais les shadow roots (bornés à 40) et chaque élément relevé porte un
+drapeau `shadow`.
+
+Conséquence pour la suite : **un exécuteur de recette devra descendre les shadow roots de la même
+façon**. Un `querySelector` ordinaire ne trouvera jamais un champ situé dans un composant.
+
+**Le projet d'essai doit être neuf.** Ces pages ont été relevées sur un projet **déjà configuré**
+(sa page OAuth affiche un état existant et du trafic). Or la recette, elle, part d'un projet neuf,
+dont l'écran de consentement présente un assistant « Commencer » que ces relevés ne montrent pas.
+Un relevé fidèle demande donc un **projet jetable**, supprimé après coup.
