@@ -17,5 +17,5 @@ docs/backlog/
 docs/qa-reports/
 docs/tickets/
 
-# Scratch des outils (Qwen Code) : extractions et scripts jetables
-.qwen/tmp/
+# Outils internes de développement (Qwen Code) : scratch, scripts jetables, config locale
+.qwen/
