@@ -8,6 +8,8 @@ import * as figma from "./integrations/figma"
 import * as googleCalendar from "./integrations/google-calendar"
 import { listConnectors } from "./connectors/registry"
 import * as connectorSetup from "./connectors/setup-pages"
+import { BrowserAutomationBridge } from "./browser-automation/bridge"
+import { browserAutomationSocketPath } from "./browser-automation/socket-path"
 import * as journal from "./journal"
 import * as autonomy from "./autonomy"
 import * as speech from "./speech"
@@ -394,6 +396,16 @@ app.whenReady().then(() => {
 
     return { text: cleanText, tickets: relevantTickets }
   })
+
+  // Phase ② du chantier d'automatisation navigateur : le pont seul, sans
+  // recette. Il ne sert qu'à savoir si l'extension est joignable et à mesurer
+  // un aller-retour (docs/ipc/browser-automation.md §9).
+  const browserAutomation = new BrowserAutomationBridge(browserAutomationSocketPath(), {
+    info: (message) => console.log(`[browser-automation] ${message}`),
+    warn: (message) => console.warn(`[browser-automation] ${message}`),
+  })
+  browserAutomation.start()
+  app.on("before-quit", () => browserAutomation.stop())
 
   createWindow()
 
