@@ -407,21 +407,26 @@ app.whenReady().then(() => {
   const browserAutomation = new BrowserAutomationBridge(browserAutomationSocketPath(), automationLogger)
 
   // Outil de maintenance, jamais actif en usage normal : relever la structure
-  // d'une page pour écrire les sélecteurs d'une recette, au lieu de les inventer
-  // (contrat, §13). Ne s'active que si la variable est posée explicitement.
-  const reconPrefix = process.env["BYKO_RECON_URL_PREFIX"]
-  const browserAutomationRecon = reconPrefix
-    ? new BrowserAutomationRecon({
-        bridge: { send: (message) => browserAutomation.sendToExtension(message) },
-        logger: automationLogger,
-        outputDir: app.getPath("userData"),
-        urlPrefix: normalizeUrlPrefix(reconPrefix),
-      })
-    : null
+  // de pages pour écrire les sélecteurs d'une recette, au lieu de les inventer
+  // (contrat, §13). Ne s'active que si la variable est posée explicitement, et
+  // accepte plusieurs préfixes séparés par des virgules.
+  const reconPrefixes = (process.env["BYKO_RECON_URL_PREFIX"] ?? "")
+    .split(",")
+    .map((prefix) => normalizeUrlPrefix(prefix))
+    .filter((prefix) => prefix !== "")
+  const browserAutomationRecon =
+    reconPrefixes.length > 0
+      ? new BrowserAutomationRecon({
+          bridge: { send: (message) => browserAutomation.sendToExtension(message) },
+          logger: automationLogger,
+          outputDir: app.getPath("userData"),
+          urlPrefixes: reconPrefixes,
+        })
+      : null
   if (browserAutomationRecon) {
     // L'extension peut se connecter après le démarrage : on attend qu'elle
-    // s'annonce pour lui demander le relevé.
-    browserAutomation.onConnected = () => browserAutomationRecon.request()
+    // s'annonce pour lancer la série de relevés.
+    browserAutomation.onConnected = () => browserAutomationRecon.start()
     browserAutomation.onMessage = (message) => browserAutomationRecon.handleMessage(message)
   }
 

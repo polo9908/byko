@@ -75,10 +75,20 @@ npm run build
 BYKO_RECON_URL_PREFIX=https://console.cloud.google.com/ npx electron .
 ```
 
-La valeur est un **préfixe d'URL**, pas forcément un domaine : viser
-`https://console.cloud.google.com/projectcreate` relève cette page précise, ce
-qui permet de relever plusieurs pages ouvertes en parallèle, une exécution par
-page.
+La valeur est une **liste de préfixes d'URL séparés par des virgules**, pas
+forcément des domaines : viser `https://console.cloud.google.com/projectcreate`
+relève cette page précise. On peut donc relever plusieurs onglets ouverts en une
+seule exécution.
+
+```sh
+BYKO_RECON_URL_PREFIX="https://console.cloud.google.com/auth/overview,https://console.cloud.google.com/auth/audience" npx electron .
+```
+
+**À savoir sur la console Google** : ses pages `/auth/*` sont liées à un projet.
+Ouvertes sans `?project=…`, elles sont redirigées vers un sélecteur de projet — et
+le relevé ne trouve alors aucun onglet correspondant, ce qui se manifeste par
+`reconFailed: aucun onglet ouvert sur …`. Ouvre-les avec le paramètre, par
+exemple `https://console.cloud.google.com/auth/overview?project=mon-projet`.
 
 BYKO demande alors à l'extension de relever l'onglet **que tu as ouvert toi-même**
 correspondant à ce préfixe, puis écrit le résultat dans un fichier
