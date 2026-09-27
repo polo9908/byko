@@ -37,9 +37,10 @@ l'utilisateur n'ait plus rien à faire à la main.
 - Une extension Chrome qui n'agit que sur une **liste blanche d'origines**, par recettes
   déclaratives.
 - Un canal de messagerie native entre l'extension et BYKO.
-- Un bouton « Créer automatiquement » dans l'assistant de connexion, précédé d'un écran
-  d'acceptation qui énumère les actions prévues.
-- Les recettes Google Agenda (5 pages), puis Jira et Figma (1 page chacune).
+- Le clic « Connecter » de chaque fiche de connecteur, qui vaut déclenchement (§3.5).
+- **Les recettes de tous les connecteurs branchés** — Google Agenda, Jira, Figma, et chaque
+  fournisseur IA (§5.2). Google Agenda n'est que la première : c'est la plus longue, donc la
+  plus démonstrative.
 
 **Hors périmètre**
 
@@ -119,7 +120,7 @@ Ce qui protège malgré tout l'utilisateur, sans rien lui demander :
 - la liste des actions prévues reste **affichée en clair** dans BYKO pendant l'exécution (§4.3,
   étape 2) — informative, pas bloquante ;
 - un bouton **Arrêter** reste disponible à tout moment ;
-- l'extension n'agit que sur les origines déclarées par la recette (§5.2), jamais ailleurs ;
+- l'extension n'agit que sur les origines déclarées par la recette (§5.3), jamais ailleurs ;
 - les actions irréversibles côté Google restent derrière les écrans que Google impose lui-même
   (§3.4).
 
@@ -253,17 +254,41 @@ type RecipeStep =
 
 `FillValue` couvre trois cas : une constante (le nom du produit), une valeur fournie par
 l'utilisateur (le nom du projet), et une valeur générée localement (un identifiant de projet
-unique). `CaptureKey` couvre exactement deux clés : `clientId`, `clientSecret`.
+unique). `CaptureKey` nomme ce que l'étape `read` ramasse — voir §5.2 : ces clés sont celles
+des connecteurs, pas seulement celles de Google.
 
-### 5.2 Règles
+### 5.2 Un modèle générique, pas un modèle Google
+
+**Exigence posée par l'utilisateur le 27/09/2026 : la connexion automatique doit valoir pour
+tous les connecteurs**, pas seulement Google Agenda.
+
+Conséquence de conception : la chaîne « capture → validation → enregistrement » est
+**générique**. Chaque recette déclare ce qu'elle produit, et `main` remet ces valeurs à la
+fonction `connect` **existante** du connecteur concerné. Rien ne doit être écrit en supposant
+Google : ni un type `clientSecret` en dur, ni un appel direct à `google-calendar.ts`, ni une
+page d'identifiants supposée être celle de Cloud Console.
+
+État des lieux des connecteurs branchés (`src/shared/connectors.ts`) :
+
+| Connecteur | Ce que la recette doit produire | Entrées non secrètes |
+|---|---|---|
+| Google Agenda | Client ID, Client Secret | nom du projet Cloud (généré) |
+| Jira | jeton d'API | e-mail du compte ; le domaine est déductible par l'heuristique existante `guessJiraDomain()` (`src/shared/jira.ts`) |
+| Figma | jeton personnel | — |
+| IA | clé d'API | **une recette par fournisseur** : le registre `AI_PROVIDERS` en compte six (`src/shared/ai.ts`), chacun avec sa page de clé et sa variable d'environnement de détection |
+
+Les connecteurs annoncés mais sans backend (Slack, Teams, Outlook, GitHub) restent hors
+périmètre tant que leur intégration n'existe pas : une recette n'aurait rien à alimenter.
+
+### 5.3 Règles
 
 - **Les recettes vivent dans `main`.** Le renderer n'envoie qu'un identifiant, validé contre
   une liste blanche — prolongement direct de la règle « aucune URL dans le renderer ».
 - **Une recette ne peut agir que sur les origines de son champ `origins`.** Aucune recette ne
   reçoit d'origine dynamique.
-- **Chaque étape porte une `description` en français**, affichée telle quelle dans l'écran
-  d'acceptation et dans la progression. Une étape sans description lisible n'est pas publiable :
-  l'utilisateur doit pouvoir dire non en connaissance de cause.
+- **Chaque étape porte une `description` en français**, affichée telle quelle dans la
+  progression. Une étape sans description lisible n'est pas publiable : l'utilisateur doit
+  pouvoir comprendre ce qui se passe et arrêter en connaissance de cause.
 - **`pause` n'est pas un échec.** C'est le mécanisme par lequel le consentement Google reste
   humain (§3.1).
 - **Toute étape a un délai.** Un sélecteur qui n'apparaît pas dans le délai fait échouer la
@@ -385,8 +410,8 @@ changerait pas la conclusion probable.
 |---|---|---|
 | ① | Ce document | Relu et arbitré, y compris §3.3 (recettes figées ou IA) |
 | ② | Le pont seul : extension squelette, manifeste hôte, appariement, un aller-retour de test. **Aucune recette, aucune donnée réelle** | Un message part de l'extension et revient au main, tracé, sans secret |
-| ③ | Recette Google (5 pages) + étape `pause` + transfert et validation du secret | Les identifiants arrivent dans `safeStorage` et le flux OAuth existant s'enchaîne ; audit `qa-log-auditor` passé |
-| ④ | Recettes Jira et Figma (1 page chacune) | Même critère qu'en ③, par connecteur |
+| ③ | La **chaîne générique** de capture — recette → capture → validation → `connect` du connecteur — puis la première recette, Google Agenda (5 pages) avec son étape `pause` | Les identifiants arrivent dans `safeStorage` par la chaîne générique, et le flux OAuth existant s'enchaîne ; audit `qa-log-auditor` passé |
+| ④ | Les recettes des autres connecteurs branchés — Jira, Figma, et les six fournisseurs IA — **sans retoucher la chaîne générique de ③** | Chaque connecteur se configure de bout en bout. Si une recette oblige à modifier la chaîne de ③, c'est que ③ n'était pas générique |
 | ⑤ | Slack, **après E3** (le backend n'existe pas) — via manifeste, pas via DOM | Le token Slack est consommé par une intégration réelle |
 
 ## 10. Questions ouvertes et points non vérifiés
