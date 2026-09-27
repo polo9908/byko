@@ -28,6 +28,13 @@ const KEEPALIVE_INTERVAL_MS = 30_000
  * sait seulement dire s'il est joignable et mesurer un aller-retour.
  */
 export class BrowserAutomationBridge {
+  /**
+   * Reçoit les messages que le pont ne traite pas lui-même (`step`, `capture`,
+   * `finished`). Branché sur l'exécuteur de recettes. Sans lui, ces messages
+   * sont simplement ignorés.
+   */
+  onMessage: ((message: BridgeMessage) => void) | null = null
+
   private server: Server | null = null
   private socket: Socket | null = null
   private keepalive: ReturnType<typeof setInterval> | null = null
@@ -180,6 +187,9 @@ export class BrowserAutomationBridge {
       }
       case "log":
         this.logger.info(`extension : ${parsed.message}`)
+        break
+      default:
+        this.onMessage?.(parsed)
         break
     }
   }
