@@ -8,6 +8,10 @@ import * as figma from "./integrations/figma"
 import * as googleCalendar from "./integrations/google-calendar"
 import { listConnectors } from "./connectors/registry"
 import * as connectorSetup from "./connectors/setup-pages"
+import { BrowserAutomationBridge } from "./browser-automation/bridge"
+import { browserAutomationSocketPath } from "./browser-automation/socket-path"
+import { BrowserAutomationRecon, normalizeUrlPrefix } from "./browser-automation/recon"
+import { BrowserAutomationAgent } from "./browser-automation/agent"
 import * as journal from "./journal"
 import * as autonomy from "./autonomy"
 import * as speech from "./speech"
@@ -394,6 +398,78 @@ app.whenReady().then(() => {
 
     return { text: cleanText, tickets: relevantTickets }
   })
+
+  // Pont d'automatisation navigateur : état de la liaison, et exécution des
+  // recettes quand il y en aura (docs/ipc/browser-automation.md).
+  const automationLogger = {
+    info: (message: string) => console.log(`[browser-automation] ${message}`),
+    warn: (message: string) => console.warn(`[browser-automation] ${message}`),
+  }
+  const browserAutomation = new BrowserAutomationBridge(browserAutomationSocketPath(), automationLogger)
+
+  // Outil de maintenance, jamais actif en usage normal : relever la structure
+  // de pages pour écrire les sélecteurs d'une recette, au lieu de les inventer
+  // (contrat, §13). Ne s'active que si la variable est posée explicitement, et
+  // accepte plusieurs préfixes séparés par des virgules.
+  const reconPrefixes = (process.env["BYKO_RECON_URL_PREFIX"] ?? "")
+    .split(",")
+    .map((prefix) => normalizeUrlPrefix(prefix))
+    .filter((prefix) => prefix !== "")
+  const browserAutomationRecon =
+    reconPrefixes.length > 0
+      ? new BrowserAutomationRecon({
+          bridge: { send: (message) => browserAutomation.sendToExtension(message) },
+          logger: automationLogger,
+          outputDir: app.getPath("userData"),
+          urlPrefixes: reconPrefixes,
+        })
+      : null
+
+  // Pilotage par IA (contrat, §3.3). Déclenché par l'environnement le temps de
+  // l'éprouver ; le bouton « connexion auto » de l'interface viendra le
+  // remplacer, sans changer cette mécanique.
+  const agentGoal = process.env["BYKO_AGENT_GOAL"]
+  const agentUrl = process.env["BYKO_AGENT_URL"] ?? ""
+  let agentOrigin: string | null = null
+  try {
+    if (agentUrl !== "") agentOrigin = `${new URL(agentUrl).origin}/`
+  } catch {
+    automationLogger.warn(`BYKO_AGENT_URL illisible, pilotage désactivé : ${agentUrl}`)
+  }
+  const agent =
+    agentGoal && agentOrigin
+      ? new BrowserAutomationAgent({
+          bridge: { send: (message) => browserAutomation.sendToExtension(message) },
+          logger: automationLogger,
+          complete: (prompt) => aiProvider.complete(prompt),
+          goal: agentGoal,
+          targetUrl: agentUrl,
+          // Périmètre : l'origine de la page visée, et rien d'autre.
+          allowedOrigins: [agentOrigin],
+          applyCredentials: async (clientId, clientSecret) => {
+            // Première étape : vérifier qu'on sait les lire. Le branchement réel
+            // passe par `applyCapturedValues`, qui enchaîne le flux OAuth — c'est
+            // là que l'utilisateur clique « Autoriser ».
+            automationLogger.info(
+              `identifiants lus (Client ID : ${clientId.length} caractères, Secret : ${clientSecret.length} caractères)`,
+            )
+          },
+        })
+      : null
+
+  browserAutomation.onMessage = (message) => {
+    if (browserAutomationRecon?.handleMessage(message)) return
+    agent?.handleMessage(message)
+  }
+  browserAutomation.onConnected = () => {
+    // L'extension peut se connecter après le démarrage : on attend qu'elle
+    // s'annonce avant de lui demander quoi que ce soit.
+    browserAutomationRecon?.start()
+    if (agent) void agent.run()
+  }
+
+  browserAutomation.start()
+  app.on("before-quit", () => browserAutomation.stop())
 
   createWindow()
 

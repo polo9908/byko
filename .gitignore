@@ -19,3 +19,8 @@ docs/tickets/
 
 # Outils internes de développement (Qwen Code) : scratch, scripts jetables, config locale
 .qwen/
+
+# Extension Chrome empaquetée : la clé privée fixe l'identifiant de l'extension,
+# auquel le manifeste hôte de messagerie native se fie. Elle ne doit JAMAIS être publiée.
+*.pem
+*.crx

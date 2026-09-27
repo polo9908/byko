@@ -9,6 +9,9 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, "src/main/index.ts"),
+          // Helper de messagerie native : un processus distinct, lancé par
+          // Chrome et exécuté par Node (voir docs/ipc/browser-automation.md).
+          nativeHost: resolve(__dirname, "src/native-host/index.ts"),
         },
       },
     },

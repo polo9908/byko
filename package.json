@@ -15,6 +15,7 @@
     "format": "prettier --write .",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "install:native-host": "node scripts/install-native-host.mjs",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:mac": "npm run build && electron-builder --mac",
