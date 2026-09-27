@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import { createServer, type Server, type Socket } from "node:net"
 import { dirname } from "node:path"
 import {
+  BRIDGE_MESSAGE_TYPES,
   BRIDGE_PING_TIMEOUT_MS,
   type BridgeMessage,
   type BrowserAutomationBridgeStatus,
@@ -226,7 +227,7 @@ export class BrowserAutomationBridge {
 function isBridgeMessage(value: unknown): value is BridgeMessage {
   if (typeof value !== "object" || value === null) return false
   const type = (value as { type?: unknown }).type
-  return type === "hello" || type === "ping" || type === "pong" || type === "log"
+  return typeof type === "string" && BRIDGE_MESSAGE_TYPES.has(type)
 }
 
 function describeError(error: unknown): string {

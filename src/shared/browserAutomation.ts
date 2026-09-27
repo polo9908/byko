@@ -119,6 +119,31 @@ export const RECON_MAX_NODES = 400
 export const RECON_MAX_TEXT = 80
 
 /**
+ * Liste des types de messages acceptés par le pont, à l'exécution.
+ *
+ * Le `Record<BridgeMessage["type"], true>` est le point important : le
+ * compilateur exige que **chaque** variante de l'union y figure. Ajouter un
+ * message sans l'inscrire ici ne compile pas — ce qui évite qu'un message
+ * valide soit silencieusement jeté comme « forme inconnue ».
+ */
+const BRIDGE_MESSAGE_TYPE_MAP: Record<BridgeMessage["type"], true> = {
+  hello: true,
+  ping: true,
+  pong: true,
+  log: true,
+  run: true,
+  cancel: true,
+  step: true,
+  capture: true,
+  finished: true,
+  recon: true,
+  reconResult: true,
+  reconFailed: true,
+}
+
+export const BRIDGE_MESSAGE_TYPES: ReadonlySet<string> = new Set(Object.keys(BRIDGE_MESSAGE_TYPE_MAP))
+
+/**
  * Nom du manifeste hôte de messagerie native. Il est écrit par
  * `scripts/install-native-host.mjs` et appelé par l'extension : les deux
  * doivent utiliser exactement cette valeur.
