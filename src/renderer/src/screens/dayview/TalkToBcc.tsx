@@ -1,8 +1,12 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState } from "react"
 import { isSilent, startVoiceRecording } from "@renderer/lib/voiceRecorder"
 import type { VoiceRecording } from "@renderer/lib/voiceRecorder"
 import { playSfx } from "@renderer/lib/sound"
-import type { AssistantAnswer } from "@shared/assistant"
+import { completeTyped, GHOST_MIN_CHARS } from "@renderer/lib/completion"
+import { ASSISTANT_SUGGEST_MIN_CHARS } from "@shared/assistant"
+import type { AssistantAnswer, AssistantSuggestion, AssistantSuggestionKind } from "@shared/assistant"
+import type { PersonalShortcut } from "@shared/vocabulary"
+import { VOCABULARY_MIN_CHARS } from "@shared/vocabulary"
 import "../onboarding/onboarding.css"
 import "../journal/journal.css"
 import "./dayview.css"
@@ -27,6 +31,29 @@ function suggestionsFor(now: Date): string[] {
   return suggestions.slice(0, 4)
 }
 
+const SUGGEST_DEBOUNCE_MS = 200
+
+const SUGGESTION_KIND_LABEL: Record<AssistantSuggestionKind, string> = {
+  ticket: "Ticket",
+  journal: "Hier",
+  decision: "Réunion",
+}
+
+/** Questions types (chips), et en tête les raccourcis appris : corpus local de la complétion fantôme. */
+function completionCorpus(shortcuts: PersonalShortcut[]): string[] {
+  const base = [
+    "Mes tickets ouverts",
+    "Mes tickets mis à jour aujourd'hui",
+    "Mes tickets bloqués",
+    "Mes tickets en revue",
+    "Récap de la semaine",
+    "Ce qui a bougé depuis vendredi",
+    "Qu'est-ce qui est bloqué ?",
+    "Qu'est-ce qui est en revue ?",
+  ]
+  return [...shortcuts.flatMap((shortcut) => [shortcut.typed, shortcut.question]), ...base]
+}
+
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   return target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable
@@ -47,14 +74,85 @@ function TalkToBcc(): React.JSX.Element {
   const [voiceHint, setVoiceHint] = useState<string | null>(null)
   const [lastQuestion, setLastQuestion] = useState<string | null>(null)
   const [focusedIndex, setFocusedIndex] = useState(-1)
+  const [liveSuggestions, setLiveSuggestions] = useState<AssistantSuggestion[]>([])
+  const [suggestOpen, setSuggestOpen] = useState(false)
+  const [suggestIndex, setSuggestIndex] = useState(-1)
+  const [shortcuts, setShortcuts] = useState<PersonalShortcut[]>([])
+  const [inputFocused, setInputFocused] = useState(false)
+  // La complétion fantôme ne s'affiche qu'au bout de la saisie : au milieu, « le reste de la phrase » n'a pas de sens.
+  const [caretAtEnd, setCaretAtEnd] = useState(true)
   const recordingRef = useRef<VoiceRecording | null>(null)
   const ticketRowsRef = useRef<(HTMLAnchorElement | null)[]>([])
+  const suggestRequestRef = useRef(0)
+  const suggestListId = useId()
 
   useEffect(() => {
     // Préchargement du modèle (téléchargé une seule fois) pour que la première transcription soit rapide.
     window.api.speech.prepare().catch(() => undefined)
     return () => recordingRef.current?.cancel()
   }, [])
+
+  useEffect(() => {
+    // Raccourcis appris localement : corpus de complétion et marque « appris » dans la liste.
+    window.api.vocabulary
+      .list()
+      .then((result) => setShortcuts(result))
+      .catch(() => undefined)
+  }, [])
+
+  function refreshShortcuts(): void {
+    window.api.vocabulary
+      .list()
+      .then((result) => setShortcuts(result))
+      .catch(() => undefined)
+  }
+
+  useEffect(() => {
+    // Chaque frappe (ou sortie de la phase) invalide la requête en vol : seule la plus récente peut s'afficher.
+    const requestId = ++suggestRequestRef.current
+    let disposed = false
+    const query = typedText.trim()
+    if (phase !== "typing" || query.length < ASSISTANT_SUGGEST_MIN_CHARS) {
+      setLiveSuggestions([])
+      setSuggestIndex(-1)
+      return
+    }
+    const timer = window.setTimeout(() => {
+      window.api.assistant
+        .suggest(query)
+        .then((result) => {
+          if (disposed || requestId !== suggestRequestRef.current) return
+          setLiveSuggestions(result)
+          setSuggestIndex(-1)
+        })
+        .catch(() => {
+          // Pas de repli inventé : la liste disparaît, le texte tapé reste soumissible tel quel.
+          if (disposed || requestId !== suggestRequestRef.current) return
+          setLiveSuggestions([])
+          setSuggestIndex(-1)
+        })
+    }, SUGGEST_DEBOUNCE_MS)
+    return () => {
+      disposed = true
+      window.clearTimeout(timer)
+    }
+  }, [phase, typedText])
+
+  const suggestVisible =
+    phase === "typing" &&
+    suggestOpen &&
+    liveSuggestions.length > 0 &&
+    typedText.trim().length >= ASSISTANT_SUGGEST_MIN_CHARS
+
+  // Complétion fantôme : proposée seulement quand la liste de suggestions ne prend pas déjà l'écran.
+  const ghost =
+    phase === "typing" &&
+    inputFocused &&
+    caretAtEnd &&
+    !suggestVisible &&
+    typedText.trim().length >= GHOST_MIN_CHARS
+      ? completeTyped(typedText, completionCorpus(shortcuts))
+      : null
 
   function fallBackToTyping(hint: string): void {
     setVoiceHint(hint)
@@ -65,7 +163,43 @@ function TalkToBcc(): React.JSX.Element {
     setAnswer(null)
     setError(null)
     setVoiceHint(null)
+    setSuggestOpen(false)
     setPhase("typing")
+  }
+
+  /**
+   * Valide une suggestion : c'est le moment où l'utilisateur confirme « ce qu'il a
+   * tapé → cette suggestion ». On l'apprend localement (jamais transmis à l'IA),
+   * puis on pose la question associée.
+   */
+  function chooseSuggestion(suggestion: AssistantSuggestion): void {
+    learnShortcut(typedText, suggestion)
+    void ask(suggestion.question)
+  }
+
+  function learnShortcut(query: string, suggestion: AssistantSuggestion): void {
+    const phrase = query.trim()
+    if (phrase.length < VOCABULARY_MIN_CHARS) return
+    // `personal:<kind>:<targetId>` ou `<kind>:<targetId>` : la cible réelle est la même.
+    const target = suggestion.id.startsWith("personal:")
+      ? suggestion.id.slice("personal:".length)
+      : suggestion.id
+    const separator = target.indexOf(":")
+    if (separator <= 0) return
+    const kind = target.slice(0, separator)
+    const targetId = target.slice(separator + 1)
+    if (kind !== "ticket" && kind !== "journal" && kind !== "decision") return
+    if (targetId === "") return
+    window.api.vocabulary
+      .record(phrase, {
+        kind,
+        targetId,
+        label: suggestion.label,
+        question: suggestion.question,
+        ...(suggestion.detail === undefined ? {} : { detail: suggestion.detail }),
+      })
+      .then(() => refreshShortcuts())
+      .catch(() => undefined)
   }
 
   async function ask(question: string): Promise<void> {
@@ -85,10 +219,11 @@ function TalkToBcc(): React.JSX.Element {
     }
   }
 
-  async function handleOpen(): Promise<void> {
-    setAnswer(null)
+  /** Démarre l'écoute sans toucher au texte déjà tapé : la dictée vient le compléter, pas le remplacer. */
+  async function beginListening(): Promise<void> {
     setError(null)
     setVoiceHint(null)
+    setSuggestOpen(false)
     setPhase("listening")
     const granted = await window.api.meeting.requestMicAccess()
     if (!granted) {
@@ -106,22 +241,61 @@ function TalkToBcc(): React.JSX.Element {
     }
   }
 
-  async function handleStopListening(): Promise<void> {
+  async function handleOpen(): Promise<void> {
+    setAnswer(null)
+    await beginListening()
+  }
+
+  /** Basculer vers la voix depuis la saisie : le texte déjà écrit est conservé et complété par la dictée. */
+  async function handleDictateMore(): Promise<void> {
+    setAnswer(null)
+    await beginListening()
+  }
+
+  /**
+   * Fin d'écoute. `send` : on envoie (voix seule, ou texte + voix concaténés) ;
+   * `review` : on repose le texte combiné dans le champ pour le relire/continuer.
+   */
+  async function finishListening(onResult: "send" | "review"): Promise<void> {
     const recording = recordingRef.current
     if (!recording) return
     recordingRef.current = null
     setPhase("transcribing")
+    let text: string
     try {
       const audio = await recording.stop()
-      const text = isSilent(audio) ? "" : await window.api.speech.transcribe(audio)
-      if (!text) {
-        fallBackToTyping("Je n'ai rien entendu — réessayez avec Espace ou écrivez votre question.")
-        return
-      }
-      await ask(text)
+      text = isSilent(audio) ? "" : await window.api.speech.transcribe(audio)
     } catch (err) {
       fallBackToTyping(`Transcription impossible (${cleanIpcErrorMessage(err)}) — écrivez votre question.`)
+      return
     }
+    const prefix = typedText.trim()
+    if (!text) {
+      fallBackToTyping(
+        prefix
+          ? "Je n'ai rien entendu — votre question écrite est conservée, continuez-la."
+          : "Je n'ai rien entendu — réessayez avec Espace ou écrivez votre question.",
+      )
+      return
+    }
+    const combined = prefix ? `${prefix} ${text}`.trim() : text
+    if (onResult === "send") {
+      await ask(combined)
+      return
+    }
+    // Fusion voix/texte : la question combinée reste modifiable avant l'envoi.
+    setTypedText(combined)
+    setSuggestOpen(false)
+    setCaretAtEnd(true)
+    setPhase("typing")
+  }
+
+  function handleStopListening(): void {
+    void finishListening("send")
+  }
+
+  function handleReviewListening(): void {
+    void finishListening("review")
   }
 
   function handleAnsweredKey(event: KeyboardEvent): void {
@@ -160,7 +334,7 @@ function TalkToBcc(): React.JSX.Element {
       if (event.code === "Space" && (phase === "idle" || phase === "listening")) {
         event.preventDefault()
         if (phase === "idle") void handleOpen()
-        else void handleStopListening()
+        else handleStopListening()
         return
       }
       // T (« taper ») plutôt qu'Entrée : Entrée activerait aussi le bouton qui a le focus, et une lettre
@@ -183,11 +357,56 @@ function TalkToBcc(): React.JSX.Element {
     setPhase("idle")
     setTypedText("")
     setFocusedIndex(-1)
+    setSuggestOpen(false)
   }
 
   function handleSubmitTyped(): void {
     if (!typedText.trim()) return
     void ask(typedText.trim())
+  }
+
+  function handleTypedKey(event: React.KeyboardEvent<HTMLInputElement>): void {
+    // Tab accepte la complétion fantôme quand elle est affichée ; sinon il garde son rôle (focus).
+    if (event.key === "Tab" && ghost && !event.shiftKey) {
+      event.preventDefault()
+      setTypedText(typedText + ghost)
+      setCaretAtEnd(true)
+      return
+    }
+    if (suggestVisible) {
+      const count = liveSuggestions.length
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        // Sans preventDefault, le curseur sauterait en début/fin de champ.
+        event.preventDefault()
+        const step = event.key === "ArrowDown" ? 1 : -1
+        setSuggestIndex((current) => (current < 0 ? (step > 0 ? 0 : count - 1) : (current + step + count) % count))
+        return
+      }
+      if (event.key === "Enter") {
+        event.preventDefault()
+        const selected = suggestIndex >= 0 ? liveSuggestions[suggestIndex] : undefined
+        if (selected) chooseSuggestion(selected)
+        else handleSubmitTyped()
+        return
+      }
+      if (event.key === "Escape") {
+        // Échap ne ferme que la liste : le même événement ne doit atteindre ni la fermeture du panneau
+        // ni le listener `window`.
+        event.preventDefault()
+        event.stopPropagation()
+        setSuggestOpen(false)
+        setSuggestIndex(-1)
+        return
+      }
+    }
+    if (event.key === "Enter") handleSubmitTyped()
+    else if (event.key === "Escape") handleClose()
+    else if (event.key === "ArrowUp" && typedText === "" && lastQuestion) {
+      event.preventDefault()
+      // Le rappel n'est pas une frappe : la liste reste fermée jusqu'à la prochaine saisie.
+      setSuggestOpen(false)
+      setTypedText(lastQuestion)
+    }
   }
 
   if (phase === "idle") {
@@ -230,15 +449,23 @@ function TalkToBcc(): React.JSX.Element {
             <span className="dayview-talk-live-dot" aria-hidden="true" />
             Je vous écoute…
           </p>
-          <button
-            type="button"
-            className="onboarding-button onboarding-button--primary"
-            onClick={() => void handleStopListening()}
-          >
-            Envoyer
-          </button>
+          {typedText.trim() !== "" && (
+            <p className="dayview-talk-echo">La dictée s&apos;ajoutera à « {typedText.trim()} »</p>
+          )}
+          <div className="dayview-talk-listen-actions">
+            <button
+              type="button"
+              className="onboarding-button onboarding-button--primary"
+              onClick={handleStopListening}
+            >
+              Envoyer
+            </button>
+            <button type="button" className="onboarding-link" onClick={handleReviewListening}>
+              Écrire la suite
+            </button>
+          </div>
           <p className="dayview-talk-kbd-hint">
-            ou appuyez à nouveau sur <kbd className="dayview-kbd">Espace</kbd>
+            <kbd className="dayview-kbd">Espace</kbd> pour envoyer, ou « Écrire la suite » pour compléter à la main
           </p>
         </>
       )}
@@ -249,38 +476,126 @@ function TalkToBcc(): React.JSX.Element {
         <div className="dayview-talk-input-group">
           {voiceHint && <p className="dayview-talk-voice-hint">{voiceHint}</p>}
           <div className="dayview-talk-input-row">
-            <input
-              className="onboarding-input dayview-talk-input"
-              type="text"
-              placeholder="Écrivez votre question à BCC…"
-              value={typedText}
-              autoFocus
-              onChange={(event) => setTypedText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") handleSubmitTyped()
-                else if (event.key === "Escape") handleClose()
-                else if (event.key === "ArrowUp" && typedText === "" && lastQuestion) {
-                  event.preventDefault()
-                  setTypedText(lastQuestion)
+            <div className="dayview-talk-field">
+              <input
+                className="onboarding-input dayview-talk-input"
+                type="text"
+                placeholder="Écrivez votre question à BCC…"
+                value={typedText}
+                autoFocus
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={suggestVisible}
+                aria-controls={suggestListId}
+                aria-activedescendant={
+                  suggestVisible && suggestIndex >= 0 ? `${suggestListId}-${suggestIndex}` : undefined
                 }
-              }}
-            />
+                onChange={(event) => {
+                  setTypedText(event.target.value)
+                  setSuggestOpen(true)
+                  setSuggestIndex(-1)
+                  setCaretAtEnd(event.target.selectionStart === event.target.value.length)
+                }}
+                onSelect={(event) => {
+                  const field = event.currentTarget
+                  setCaretAtEnd(field.selectionStart === field.value.length)
+                }}
+                onFocus={() => setInputFocused(true)}
+                onBlur={() => {
+                  setSuggestOpen(false)
+                  setInputFocused(false)
+                }}
+                onKeyDown={handleTypedKey}
+              />
+              {ghost && (
+                <div className="dayview-talk-ghost" aria-hidden="true">
+                  <span className="dayview-talk-ghost-typed">{typedText}</span>
+                  <span className="dayview-talk-ghost-suffix">{ghost}</span>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="dayview-talk-mic-button"
+              onClick={() => void handleDictateMore()}
+              aria-label="Dicter la suite"
+              title="Dicter la suite — votre texte écrit est conservé"
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <rect x="6" y="1.5" width="4" height="8" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                <path
+                  d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
             <button type="button" className="onboarding-button onboarding-button--primary" onClick={handleSubmitTyped}>
               Envoyer
             </button>
           </div>
-          <div className="dayview-talk-suggestions">
-            {suggestionsFor(new Date()).map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                className="dayview-suggestion-chip"
-                onClick={() => void ask(suggestion)}
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
+          {ghost && (
+            <p className="dayview-talk-kbd-hint">
+              <kbd className="dayview-kbd">Tab</kbd> pour compléter
+            </p>
+          )}
+          <ul
+            id={suggestListId}
+            role="listbox"
+            aria-label="Suggestions"
+            className="dayview-talk-suggest"
+            hidden={!suggestVisible}
+          >
+            {suggestVisible &&
+              liveSuggestions.map((suggestion, index) => (
+                <li
+                  key={suggestion.id}
+                  id={`${suggestListId}-${index}`}
+                  role="option"
+                  aria-selected={index === suggestIndex}
+                  className={
+                    index === suggestIndex
+                      ? "dayview-talk-suggest-item dayview-talk-suggest-item--selected"
+                      : "dayview-talk-suggest-item"
+                  }
+                  title={suggestion.learned ? "Raccourci appris sur cet appareil" : undefined}
+                  // Sans ça, le mousedown ôte le focus au champ : blur → liste fermée avant que le clic n'arrive.
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setSuggestIndex(index)}
+                  onClick={() => chooseSuggestion(suggestion)}
+                >
+                  <span className={`dayview-talk-suggest-kind dayview-talk-suggest-kind--${suggestion.kind}`}>
+                    {SUGGESTION_KIND_LABEL[suggestion.kind]}
+                  </span>
+                  <span className="dayview-talk-suggest-text">
+                    <span className="dayview-talk-suggest-label">
+                      {suggestion.learned && (
+                        <span className="dayview-talk-suggest-learned" aria-hidden="true">
+                          ★{" "}
+                        </span>
+                      )}
+                      {suggestion.label}
+                    </span>
+                    {suggestion.detail && <span className="dayview-talk-suggest-detail">{suggestion.detail}</span>}
+                  </span>
+                </li>
+              ))}
+          </ul>
+          {typedText.trim() === "" && (
+            <div className="dayview-talk-suggestions">
+              {suggestionsFor(new Date()).map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  className="dayview-suggestion-chip"
+                  onClick={() => void ask(suggestion)}
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          )}
           {lastQuestion && (
             <p className="dayview-talk-kbd-hint dayview-talk-recall-hint">
               <kbd className="dayview-kbd">↑</kbd> pour reprendre la dernière question

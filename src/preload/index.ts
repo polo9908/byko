@@ -11,8 +11,10 @@ import type {
 import type { ConnectorSetupPage, ConnectorSummary } from "../shared/connectors"
 import type { JournalEntry } from "../shared/journal"
 import type { AutonomyCategory, AutonomyCategoryId } from "../shared/autonomy"
-import type { MeetingExtraction } from "../shared/meeting"
-import type { AssistantAnswer } from "../shared/assistant"
+import type { MeetingExtraction, MeetingItemDraft } from "../shared/meeting"
+import type { AssistantAnswer, AssistantSuggestion } from "../shared/assistant"
+import type { PrivacySettings } from "../shared/privacy"
+import type { PersonalShortcut, ShortcutDraft } from "../shared/vocabulary"
 
 const api = {
   getVersion: (): Promise<string> => ipcRenderer.invoke("app:getVersion"),
@@ -82,7 +84,8 @@ const api = {
   meeting: {
     requestMicAccess: (): Promise<boolean> => ipcRenderer.invoke("meeting:requestMicAccess"),
     summarize: (transcript: string): Promise<string> => ipcRenderer.invoke("meeting:summarize", transcript),
-    sendReport: (): Promise<void> => ipcRenderer.invoke("meeting:sendReport"),
+    sendReport: (reportId: string, items: MeetingItemDraft[]): Promise<void> =>
+      ipcRenderer.invoke("meeting:sendReport", reportId, items),
     extractItems: (
       transcript: string,
       existingDecisions: string[],
@@ -97,6 +100,18 @@ const api = {
   },
   assistant: {
     ask: (question: string): Promise<AssistantAnswer> => ipcRenderer.invoke("assistant:ask", question),
+    suggest: (query: string): Promise<AssistantSuggestion[]> => ipcRenderer.invoke("assistant:suggest", query),
+  },
+  privacy: {
+    get: (): Promise<PrivacySettings> => ipcRenderer.invoke("privacy:get"),
+    setShareRecentActivity: (enabled: boolean): Promise<PrivacySettings> =>
+      ipcRenderer.invoke("privacy:setShareRecentActivity", enabled),
+  },
+  vocabulary: {
+    list: (): Promise<PersonalShortcut[]> => ipcRenderer.invoke("vocabulary:list"),
+    record: (query: string, shortcut: ShortcutDraft): Promise<PersonalShortcut> =>
+      ipcRenderer.invoke("vocabulary:record", query, shortcut),
+    forget: (): Promise<void> => ipcRenderer.invoke("vocabulary:forget"),
   },
 }
 

@@ -41,6 +41,35 @@ export async function listToday(): Promise<JournalEntry[]> {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }
 
+/** Jour calendaire local précédent (pas « les dernières 24 h »), trié comme `listToday`. */
+export async function listYesterday(): Promise<JournalEntry[]> {
+  const entries: unknown[] = await readEntries()
+  // Le fichier est du JSON non vérifié : une entrée malformée ne doit pas faire
+  // échouer ask/suggest (TypeError dans le formatage ou le tri).
+  const valid = entries.filter(isUsableEntry)
+  const ignored = entries.length - valid.length
+  if (ignored > 0) {
+    console.warn(`[journal] ${ignored} entrée(s) malformée(s) ignorée(s) pour le contexte de la veille.`)
+  }
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayKey = yesterday.toDateString()
+  return valid
+    .filter((entry) => new Date(entry.createdAt).toDateString() === yesterdayKey)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+
+function isUsableEntry(entry: unknown): entry is JournalEntry {
+  if (typeof entry !== "object" || entry === null) return false
+  const { title, createdAt } = entry as Record<string, unknown>
+  return (
+    typeof title === "string" &&
+    title.trim() !== "" &&
+    typeof createdAt === "string" &&
+    !Number.isNaN(Date.parse(createdAt))
+  )
+}
+
 export async function getEntry(id: string): Promise<JournalEntry | undefined> {
   const entries = await readEntries()
   return entries.find((entry) => entry.id === id)

@@ -13,14 +13,36 @@ import { browserAutomationSocketPath } from "./browser-automation/socket-path"
 import { BrowserAutomationRecon, normalizeUrlPrefix } from "./browser-automation/recon"
 import { BrowserAutomationAgent } from "./browser-automation/agent"
 import * as journal from "./journal"
+import * as meetingDecisions from "./meetingDecisions"
+import { createTicketCache, learnedSuggestions, matchSuggestions, mergeLearnedShortcuts } from "./assistantSuggest"
+import { buildAskPrompt, selectRecentDecisions, selectRecentJournal } from "./assistantContext"
+import type { ActivityContext, ContextSource } from "./assistantContext"
+import * as privacy from "./privacy"
+import type { PrivacySettings } from "../shared/privacy"
+import * as vocabulary from "./vocabulary"
+import type { PersonalShortcut, ShortcutDraft } from "../shared/vocabulary"
+import {
+  VOCABULARY_DETAIL_MAX_CHARS,
+  VOCABULARY_LABEL_MAX_CHARS,
+  VOCABULARY_MAX_CHARS,
+  VOCABULARY_MIN_CHARS,
+  VOCABULARY_QUESTION_MAX_CHARS,
+} from "../shared/vocabulary"
 import * as autonomy from "./autonomy"
 import * as speech from "./speech"
 import { AI_PROVIDERS } from "../shared/ai"
 import type { AIProviderId } from "../shared/ai"
 import { AUTONOMY_CATEGORY_IDS, AUTONOMY_MAX_LEVEL } from "../shared/autonomy"
 import type { AutonomyCategoryId } from "../shared/autonomy"
-import type { MeetingItemDraft, MeetingItemRemoval, MeetingItemType, MeetingExtraction } from "../shared/meeting"
-import type { AssistantAnswer } from "../shared/assistant"
+import type {
+  MeetingItemDraft,
+  MeetingItemRemoval,
+  MeetingItemType,
+  MeetingExtraction,
+} from "../shared/meeting"
+import { MEETING_ITEM_MAX_CHARS, MEETING_REPORT_MAX_ITEMS } from "../shared/meeting"
+import type { AssistantAnswer, AssistantSuggestion } from "../shared/assistant"
+import { ASSISTANT_SUGGEST_MAX_CHARS, ASSISTANT_SUGGEST_MIN_CHARS } from "../shared/assistant"
 import type { JiraTicketSummary } from "../shared/jira"
 import { GOOGLE_CALENDAR_SETUP_PAGES } from "../shared/googleCalendar"
 import type { GoogleCalendarSetupPage } from "../shared/googleCalendar"
@@ -78,6 +100,162 @@ function assertLevel(value: unknown): number {
   throw new Error(`Paramètre "level" invalide.`)
 }
 
+/**
+ * Une source de suggestions en échec vaut « vide » pour cet appel, les autres
+ * répondent. Seuls le nom et le code de l'erreur sont tracés : son message peut
+ * citer le contenu d'un fichier (ex. `JSON.parse` sur `journal.json`).
+ */
+function settledOrEmpty<T>(result: PromiseSettledResult<T[]>, source: string): T[] {
+  if (result.status === "fulfilled") return result.value
+  warnSourceUnavailable("assistant:suggest", source, result.reason)
+  return []
+}
+
+/** Nom et code de l'erreur seulement : son message peut citer le contenu d'un fichier. */
+function warnSourceUnavailable(channel: string, source: string, reason: unknown): void {
+  const name = reason instanceof Error ? reason.name : "erreur inconnue"
+  const code = (reason as NodeJS.ErrnoException | null)?.code
+  console.warn(
+    `[${channel}] source « ${source} » indisponible (${typeof code === "string" ? `${name}, ${code}` : name}).`,
+  )
+}
+
+/** Pour `assistant:ask` : une source en échec reste « indisponible » dans le prompt, jamais une liste vide. */
+function settledOrUnavailable<T>(
+  result: PromiseSettledResult<T[]>,
+  source: string,
+  select: (value: T[]) => T[],
+): ContextSource<T> {
+  if (result.status === "fulfilled") return { status: "ok", value: select(result.value) }
+  warnSourceUnavailable("assistant:ask", source, result.reason)
+  return { status: "unavailable" }
+}
+
+/** Fail-closed : un réglage qu'on ne peut pas lire n'autorise pas le partage. Relu à chaque appel. */
+async function shouldShareRecentActivity(): Promise<boolean> {
+  try {
+    return (await privacy.getSettings()).shareRecentActivityWithAi
+  } catch (error) {
+    warnSourceUnavailable("privacy", "réglage de confidentialité", error)
+    return false
+  }
+}
+
+/** Borne un texte produit par l'IA sans couper une paire de substitution UTF-16 en deux. */
+function truncateMeetingText(text: string): string {
+  if (text.length <= MEETING_ITEM_MAX_CHARS) return text
+  let cut = text.slice(0, MEETING_ITEM_MAX_CHARS)
+  const last = cut.charCodeAt(cut.length - 1)
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1)
+  return cut.trimEnd()
+}
+
+/** UUID canonique (8-4-4-4-12, hexadécimal, versions 1 à 8) : le renderer le génère via `crypto.randomUUID()`. */
+const REPORT_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function assertReportId(value: unknown): string {
+  if (typeof value !== "string" || !REPORT_ID_PATTERN.test(value)) {
+    throw new Error(`Paramètre "reportId" invalide : identifiant de compte rendu (UUID) attendu.`)
+  }
+  // Minuscules : un même UUID envoyé en casse différente reste le même compte rendu.
+  return value.toLowerCase()
+}
+
+/** Tout ou rien : un seul élément invalide rejette le lot, rien n'est écrit. */
+function assertMeetingItems(value: unknown): MeetingItemDraft[] {
+  if (!Array.isArray(value)) {
+    throw new Error(
+      `Paramètre "items" invalide : une liste de décisions et de tâches est attendue.`,
+    )
+  }
+  if (value.length > MEETING_REPORT_MAX_ITEMS) {
+    throw new Error(
+      `Compte rendu trop long : ${MEETING_REPORT_MAX_ITEMS} décisions et tâches au maximum.`,
+    )
+  }
+  return value.map((item: unknown, index): MeetingItemDraft => {
+    const position = index + 1
+    if (typeof item !== "object" || item === null) {
+      throw new Error(`Élément n°${position} du compte rendu invalide.`)
+    }
+    const candidate = item as Record<string, unknown>
+    if (candidate.type !== "decision" && candidate.type !== "task") {
+      throw new Error(
+        `Élément n°${position} du compte rendu : type inconnu (décision ou tâche attendue).`,
+      )
+    }
+    if (typeof candidate.text !== "string") {
+      throw new Error(`Élément n°${position} du compte rendu : texte manquant.`)
+    }
+    const text = candidate.text.trim()
+    if (text === "") {
+      throw new Error(`Élément n°${position} du compte rendu : texte vide.`)
+    }
+    if (text.length > MEETING_ITEM_MAX_CHARS) {
+      throw new Error(
+        `Élément n°${position} du compte rendu : ${MEETING_ITEM_MAX_CHARS} caractères au maximum.`,
+      )
+    }
+    return { type: candidate.type, text }
+  })
+}
+
+/** Cible d'un raccourci appris (`vocabulary:record`) : tout ou rien, rien n'est écrit sinon. */
+function assertShortcutDraft(value: unknown): ShortcutDraft {
+  if (typeof value !== "object" || value === null) {
+    throw new Error(`Paramètre "shortcut" invalide : un objet est attendu.`)
+  }
+  const candidate = value as Record<string, unknown>
+  if (candidate.kind !== "ticket" && candidate.kind !== "journal" && candidate.kind !== "decision") {
+    throw new Error(`Raccourci invalide : type inconnu (ticket, journal ou décision attendu).`)
+  }
+  const targetId = assertNonEmptyString(candidate.targetId, "targetId")
+  if (targetId.length > VOCABULARY_MAX_CHARS) {
+    throw new Error(`Raccourci invalide : identifiant de cible trop long.`)
+  }
+  if (
+    typeof candidate.label !== "string" ||
+    candidate.label.trim() === "" ||
+    candidate.label.length > VOCABULARY_LABEL_MAX_CHARS
+  ) {
+    throw new Error(`Raccourci invalide : libellé manquant ou trop long.`)
+  }
+  if (
+    typeof candidate.question !== "string" ||
+    candidate.question.trim() === "" ||
+    candidate.question.length > VOCABULARY_QUESTION_MAX_CHARS
+  ) {
+    throw new Error(`Raccourci invalide : question manquante ou trop longue.`)
+  }
+  if (
+    candidate.detail !== undefined &&
+    (typeof candidate.detail !== "string" || candidate.detail.length > VOCABULARY_DETAIL_MAX_CHARS)
+  ) {
+    throw new Error(`Raccourci invalide : complément trop long.`)
+  }
+  return {
+    kind: candidate.kind,
+    targetId,
+    label: candidate.label,
+    question: candidate.question,
+    ...(candidate.detail === undefined ? {} : { detail: candidate.detail as string }),
+  }
+}
+
+/** Phrase réellement tapée au moment où l'utilisateur a choisi la suggestion. */
+function assertShortcutQuery(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new Error(`Paramètre "query" invalide : une chaîne est attendue.`)
+  }
+  const text = value.trim()
+  if (text.length < VOCABULARY_MIN_CHARS || text.length > VOCABULARY_MAX_CHARS) {
+    throw new Error(
+      `Raccourci invalide : entre ${VOCABULARY_MIN_CHARS} et ${VOCABULARY_MAX_CHARS} caractères attendus.`,
+    )
+  }
+  return text
+}
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1000,
@@ -124,13 +302,37 @@ app.whenReady().then(() => {
 
   ipcMain.handle("jira:openTokenPage", () => jira.openTokenPage())
   ipcMain.handle("jira:getStatus", () => jira.getStatus())
-  ipcMain.handle("jira:disconnect", () => jira.disconnect())
-  ipcMain.handle("jira:connect", (_event, domain: unknown, email: unknown, apiToken: unknown) =>
-    jira.connect(
-      assertNonEmptyString(domain, "domain"),
-      assertNonEmptyString(email, "email"),
-      assertNonEmptyString(apiToken, "apiToken"),
-    ),
+  // Cache des tickets de `assistant:suggest`, déclaré ici pour être vidé par connect/disconnect.
+  const suggestTickets = createTicketCache(
+    () => jira.searchOpenIssues(),
+    (error) => {
+      // Seule la cause Jira est tracée, jamais la saisie qui a déclenché l'appel.
+      console.warn(
+        "[assistant:suggest] tickets indisponibles pour 30 s :",
+        error instanceof Error ? error.message : "erreur inconnue",
+      )
+    },
+  )
+
+  ipcMain.handle("jira:disconnect", async () => {
+    try {
+      return await jira.disconnect()
+    } finally {
+      suggestTickets.invalidate()
+    }
+  })
+  ipcMain.handle(
+    "jira:connect",
+    async (_event, domain: unknown, email: unknown, apiToken: unknown) => {
+      const validDomain = assertNonEmptyString(domain, "domain")
+      const validEmail = assertNonEmptyString(email, "email")
+      const validToken = assertNonEmptyString(apiToken, "apiToken")
+      try {
+        return await jira.connect(validDomain, validEmail, validToken)
+      } finally {
+        suggestTickets.invalidate()
+      }
+    },
   )
   ipcMain.handle("jira:listProjects", () => jira.listProjects())
   ipcMain.handle("jira:countOpenIssues", () => jira.countOpenIssues())
@@ -241,7 +443,10 @@ app.whenReady().then(() => {
     return aiProvider.complete(prompt)
   })
 
-  ipcMain.handle("meeting:sendReport", async () => {
+  ipcMain.handle("meeting:sendReport", async (_event, reportId: unknown, items: unknown) => {
+    const id = assertReportId(reportId)
+    const drafts = assertMeetingItems(items)
+    await meetingDecisions.saveReport(id, drafts)
     await journal.addEntry("Compte rendu du point d'équipe envoyé à l'équipe", "auto")
   })
 
@@ -316,8 +521,9 @@ app.whenReady().then(() => {
       if (typeof parsed !== "object" || parsed === null) return { additions: [], removals: [] }
       const body = parsed as Record<string, unknown>
 
-      const additions = (Array.isArray(body.additions) ? body.additions : []).filter(
-        (item): item is MeetingItemDraft => {
+      // L'IA n'a pas de borne de longueur : on tronque ici pour que le compte rendu reste toujours accepté par `meeting:sendReport`.
+      const additions = (Array.isArray(body.additions) ? body.additions : [])
+        .filter((item): item is MeetingItemDraft => {
           if (typeof item !== "object" || item === null) return false
           const candidate = item as Record<string, unknown>
           return (
@@ -325,8 +531,11 @@ app.whenReady().then(() => {
             typeof candidate.text === "string" &&
             candidate.text.trim() !== ""
           )
-        },
-      )
+        })
+        .map((item): MeetingItemDraft => ({
+          type: item.type,
+          text: truncateMeetingText(item.text.trim()),
+        }))
 
       const removals: MeetingItemRemoval[] = (Array.isArray(body.removals) ? body.removals : [])
         .filter((item): item is { type: MeetingItemType; index: number } => {
@@ -357,35 +566,23 @@ app.whenReady().then(() => {
           : "Aucun ticket ouvert actuellement dans les projets connectés."
     } catch (err) {
       // Jira non connecté ou requête échouée : BCC répond sans ce contexte plutôt que de bloquer.
-      console.error("[assistant:ask] searchOpenIssues a échoué :", err)
+      warnSourceUnavailable("assistant:ask", "tickets Jira", err)
     }
 
-    const prompt = [
-      "Tu es BCC, un assistant qui aide un développeur à gérer ses tickets Jira,",
-      "ses intégrations et sa journée de travail. Réponds brièvement et",
-      "clairement en français à la question ou demande suivante. Base-toi",
-      "uniquement sur les tickets listés ci-dessous, ne les invente jamais ;",
-      "si la liste est vide ou absente, dis-le clairement plutôt que d'improviser.",
-      "Quand ta réponse fait référence à un ticket précis de cette liste, insère sa",
-      "clé entre crochets juste à cet endroit — mais SANS JAMAIS écrire la clé en",
-      "clair dans ta phrase, seulement entre crochets : par exemple « il faut",
-      "prioriser ce ticket [SCRUM-3] avant vendredi », jamais « le ticket SCRUM-3",
-      "[SCRUM-3] ». La clé sera affichée séparément sous forme de carte, ne la",
-      "répète donc jamais toi-même dans le texte. N'insère jamais de crochets",
-      "pour un ticket qui n'est pas dans la liste.",
-      "N'énumère et ne détaille JAMAIS le contenu des tickets référencés dans ton",
-      "texte (pas de titre, pas de statut, pas de liste à puces) : chaque ticket",
-      "cité [CLE] apparaîtra déjà sous forme de carte avec tout son détail.",
-      "Si la question demande simplement de lister/afficher des tickets, réponds",
-      "par une phrase d'accompagnement très courte (« Voici vos tickets ouverts",
-      "[CLE1] [CLE2]… ») sans rien ajouter d'autre : les cartes suffisent.",
-      "",
-      "Tickets Jira actuels de l'utilisateur :",
-      ticketsBlock,
-      "",
-      "Question :",
-      text,
-    ].join("\n")
+    // Réglage désactivé ou illisible : journal et décisions ne sont même pas lus.
+    let activity: ActivityContext | null = null
+    if (await shouldShareRecentActivity()) {
+      const [journalEntries, decisions] = await Promise.allSettled([
+        journal.listYesterday(),
+        meetingDecisions.listRecent(),
+      ])
+      activity = {
+        journal: settledOrUnavailable(journalEntries, "journal d'hier", selectRecentJournal),
+        decisions: settledOrUnavailable(decisions, "décisions de réunion", selectRecentDecisions),
+      }
+    }
+
+    const prompt = buildAskPrompt(text, ticketsBlock, activity)
     const rawAnswer = await aiProvider.complete(prompt)
 
     const citedKeys = new Set<string>()
@@ -398,6 +595,77 @@ app.whenReady().then(() => {
 
     return { text: cleanText, tickets: relevantTickets }
   })
+
+  ipcMain.handle(
+    "assistant:suggest",
+    async (_event, query: unknown): Promise<AssistantSuggestion[]> => {
+      if (typeof query !== "string") {
+        throw new Error(`Paramètre "query" invalide.`)
+      }
+      const text = query.trim()
+      if (text.length < ASSISTANT_SUGGEST_MIN_CHARS) return []
+      if (text.length > ASSISTANT_SUGGEST_MAX_CHARS) {
+        throw new Error(
+          `Recherche trop longue (${ASSISTANT_SUGGEST_MAX_CHARS} caractères maximum).`,
+        )
+      }
+      // Réglage désactivé ou illisible : journal et décisions ne sont même pas lus, seuls les tickets restent.
+      const shareRecent = await shouldShareRecentActivity()
+      // Le vocabulaire personnel est local : il n'est jamais transmis à l'IA. Un raccourci
+      // appris sur une décision/un journal ne doit toutefois pas réapparaître quand le partage
+      // est désactivé, sinon il contredirait le réglage.
+      const shortcuts = await vocabulary.list().catch((error: unknown) => {
+        warnSourceUnavailable("assistant:suggest", "vocabulaire personnel", error)
+        return [] as PersonalShortcut[]
+      })
+      const allowedShortcuts = shareRecent
+        ? shortcuts
+        : shortcuts.filter((shortcut) => shortcut.kind === "ticket")
+
+      if (!shareRecent) {
+        // Le cache de tickets ne rejette jamais : un échec Jira y vaut déjà « source vide », signalé une fois.
+        const matched = matchSuggestions(text, {
+          tickets: await suggestTickets.get(),
+          decisions: [],
+          journal: [],
+        })
+        return mergeLearnedShortcuts(matched, learnedSuggestions(text, allowedShortcuts))
+      }
+      const [tickets, decisions, journalEntries] = await Promise.allSettled([
+        suggestTickets.get(),
+        meetingDecisions.listRecent(),
+        journal.listYesterday(),
+      ])
+      // Mêmes fenêtres que `assistant:ask` : une suggestion proposée a toujours son contexte dans le prompt.
+      const matched = matchSuggestions(text, {
+        tickets: settledOrEmpty(tickets, "tickets"),
+        decisions: selectRecentDecisions(settledOrEmpty(decisions, "décisions de réunion")),
+        journal: selectRecentJournal(settledOrEmpty(journalEntries, "journal d'hier")),
+      })
+      return mergeLearnedShortcuts(matched, learnedSuggestions(text, allowedShortcuts))
+    },
+  )
+
+  ipcMain.handle("privacy:get", (): Promise<PrivacySettings> => privacy.getSettings())
+  ipcMain.handle(
+    "privacy:setShareRecentActivity",
+    (_event, enabled: unknown): Promise<PrivacySettings> => {
+      // Booléen strict : ni "false", ni 0, ni undefined — rien n'est écrit sinon.
+      if (typeof enabled !== "boolean") {
+        return Promise.reject(new Error(`Paramètre "enabled" invalide : un booléen est attendu.`))
+      }
+      return privacy.setShareRecentActivity(enabled)
+    },
+  )
+
+  // Vocabulaire personnel appris localement (contrat : docs/ipc/personal-vocabulary.md).
+  ipcMain.handle("vocabulary:list", (): Promise<PersonalShortcut[]> => vocabulary.list())
+  ipcMain.handle(
+    "vocabulary:record",
+    (_event, query: unknown, shortcut: unknown): Promise<PersonalShortcut> =>
+      vocabulary.record(assertShortcutQuery(query), assertShortcutDraft(shortcut)),
+  )
+  ipcMain.handle("vocabulary:forget", (): Promise<void> => vocabulary.forget())
 
   // Pont d'automatisation navigateur : état de la liaison, et exécution des
   // recettes quand il y en aura (docs/ipc/browser-automation.md).

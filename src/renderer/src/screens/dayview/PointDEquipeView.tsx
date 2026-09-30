@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { isSilent, startLiveVoiceRecording } from "@renderer/lib/voiceRecorder"
 import type { LiveVoiceRecording } from "@renderer/lib/voiceRecorder"
 import { playSfx } from "@renderer/lib/sound"
+import { MEETING_ITEM_MAX_CHARS, MEETING_REPORT_MAX_ITEMS } from "@shared/meeting"
 import type { MeetingItemDraft, MeetingItemType } from "@shared/meeting"
 import "../onboarding/onboarding.css"
 import "./pointdequipe.css"
@@ -67,6 +68,8 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [summary, setSummary] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [sending, setSending] = useState(false)
+  const [itemLimitReached, setItemLimitReached] = useState(false)
 
   const streamRef = useRef<MediaStream | null>(null)
   const audioCtxRef = useRef<AudioContext | null>(null)
@@ -82,6 +85,12 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
   const pendingRemovalIdsRef = useRef<Set<string>>(new Set())
   /** Textes explicitement annulés : sans ça, l'IA peut les re-proposer comme "nouveaux" au segment suivant, le transcript complet les contenant toujours. */
   const rejectedTextsRef = useRef<string[]>([])
+  /** Identifiant du compte rendu, fixé au démarrage : main s'en sert pour ne pas persister deux fois le même lot au « Réessayer ». */
+  const reportIdRef = useRef("")
+  /** Garde synchrone : l'état `sending` ne suffit pas contre deux clics traités avant le rendu suivant. */
+  const sendingRef = useRef(false)
+  /** Ids des items présents, tenus à jour de façon synchrone : `itemsRef` n'est rafraîchi qu'après rendu, trop tard pour borner un lot d'additions. */
+  const liveItemIdsRef = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     itemsRef.current = items
@@ -122,9 +131,15 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
 
   /** Anime l'apparition d'un item comme le prototype : entrée, texte tapé lettre par lettre, puis création Jira si tâche. */
   function addItemAnimated(draft: MeetingItemDraft): void {
+    // Au-delà, main refuserait le compte rendu entier : on n'ajoute rien (ni item, ni ticket Jira) et on le signale.
+    if (liveItemIdsRef.current.size >= MEETING_REPORT_MAX_ITEMS) {
+      setItemLimitReached(true)
+      return
+    }
     // Cue du prototype : `ping` pour une décision, `tick` pour une tâche, au moment où l'item apparaît.
     playSfx(draft.type === "decision" ? "ping" : "tick")
     const id = `item-${nextItemIdRef.current++}`
+    liveItemIdsRef.current.add(id)
     const item: MeetingItem = {
       id,
       type: draft.type,
@@ -175,6 +190,7 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
   /** La réunion revient sur une décision/tâche déjà notée : on retire l'item, et son vrai ticket Jira s'il en avait un. */
   function removeItem(itemId: string): void {
     const item = itemsRef.current.find((it) => it.id === itemId)
+    liveItemIdsRef.current.delete(itemId)
     setItems((prev) => prev.filter((it) => it.id !== itemId))
     if (!item) return
     rejectedTextsRef.current.push(item.text)
@@ -227,6 +243,9 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
       rejectedTextsRef.current = []
       pendingRemovalIdsRef.current.clear()
       nextItemIdRef.current = 0
+      liveItemIdsRef.current.clear()
+      reportIdRef.current = crypto.randomUUID()
+      setItemLimitReached(false)
       setItems([])
       setElapsed(0)
       liveRecordingRef.current = await startLiveVoiceRecording(SEGMENT_MS, (audio) => void handleSegment(audio))
@@ -258,13 +277,24 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
   }
 
   async function handleSendReport(): Promise<void> {
+    if (sendingRef.current) return
+    sendingRef.current = true
+    setSending(true)
     try {
-      await window.api.meeting.sendReport()
+      // État courant, après corrections et annulations : c'est ce lot que main persiste pour les suggestions.
+      await window.api.meeting.sendReport(
+        reportIdRef.current,
+        itemsRef.current.map(({ type, text }) => ({ type, text })),
+      )
+      setError(null)
       setPhase("sent")
       playSfx("confirm")
     } catch (err) {
+      // On reste sur le compte rendu : les items n'existent qu'en mémoire, quitter l'écran les perdrait.
       setError(cleanIpcErrorMessage(err))
-      setPhase("error")
+    } finally {
+      sendingRef.current = false
+      setSending(false)
     }
   }
 
@@ -302,6 +332,7 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
           <input
             className="pointdequipe-item-edit-input"
             defaultValue={item.text}
+            maxLength={MEETING_ITEM_MAX_CHARS}
             autoFocus
             onBlur={(event) => void handleEditItem(item.id, event.target.value)}
             onKeyDown={(event) => {
@@ -344,6 +375,9 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
 
   const decisions = items.filter((item) => item.type === "decision")
   const tasks = items.filter((item) => item.type === "task")
+  const itemLimitNotice = itemLimitReached ? (
+    <p className="onboarding-error">Limite de {MEETING_REPORT_MAX_ITEMS} décisions et tâches atteinte</p>
+  ) : null
 
   if (phase === "idle") {
     return (
@@ -405,6 +439,8 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
               )}
             </section>
           </div>
+
+          {itemLimitNotice}
 
           <div className="dayview-status-pill">
             <span className="pointdequipe-live-dot" aria-hidden="true" />
@@ -486,16 +522,23 @@ function PointDEquipeView({ onBack }: PointDEquipeViewProps): React.JSX.Element 
           </section>
         </div>
 
+        {itemLimitNotice}
         {error && <p className="onboarding-error">{error}</p>}
 
         <button
           type="button"
           className="onboarding-button onboarding-button--primary"
+          disabled={sending}
           onClick={() => void handleSendReport()}
         >
-          Envoyer à l&apos;équipe
+          {sending ? "Envoi…" : error ? "Réessayer" : "Envoyer à l'équipe"}
         </button>
-        <button type="button" className="onboarding-link onboarding-link--muted pointdequipe-back" onClick={onBack}>
+        <button
+          type="button"
+          className="onboarding-link onboarding-link--muted pointdequipe-back"
+          disabled={sending}
+          onClick={onBack}
+        >
           ‹ Retour
         </button>
       </div>

@@ -384,12 +384,162 @@
 
 .dayview-talk-input-row {
   display: flex;
+  align-items: stretch;
   gap: 8px;
   width: 100%;
 }
 
+.dayview-talk-field {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
+
 .dayview-talk-input {
   flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Complétion fantôme : miroir posé au-dessus du champ. La partie déjà tapée est
+   transparente (le vrai texte du champ reste visible dessous) et seul le reste
+   proposé apparaît en grisé ; `padding`/`border` sont calqués sur l'input. */
+.dayview-talk-ghost {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: var(--bcc-radius-control);
+  padding: 12px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  white-space: pre;
+  overflow: hidden;
+  pointer-events: none;
+  color: transparent;
+}
+
+.dayview-talk-ghost-suffix {
+  color: var(--bcc-color-text-muted);
+  opacity: 0.55;
+}
+
+.dayview-talk-mic-button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-control);
+  background: var(--bcc-color-bg);
+  color: var(--bcc-color-text-muted);
+  cursor: pointer;
+}
+
+.dayview-talk-mic-button:hover,
+.dayview-talk-mic-button:focus-visible {
+  color: var(--bcc-color-accent);
+  border-color: color-mix(in srgb, var(--bcc-color-accent) 30%, transparent);
+}
+
+.dayview-talk-listen-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dayview-talk-echo {
+  font-size: 12.5px;
+  color: var(--bcc-color-text-muted);
+  margin: 0;
+  max-width: 420px;
+  text-align: center;
+}
+
+.dayview-talk-suggest-learned {
+  color: var(--bcc-color-accent);
+}
+
+/* Suggestions en direct façon command palette, dans le flux : elles prennent la place des chips
+   (masquées dès que le champ n'est plus vide), rien ne déborde en fenêtre réduite. */
+.dayview-talk-suggest {
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-control);
+  background: var(--bcc-color-surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  text-align: left;
+}
+
+.dayview-talk-suggest[hidden] {
+  display: none;
+}
+
+.dayview-talk-suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--bcc-color-text);
+}
+
+.dayview-talk-suggest-item--selected {
+  background: color-mix(in srgb, var(--bcc-color-accent) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--bcc-color-accent);
+}
+
+.dayview-talk-suggest-kind {
+  flex: none;
+  min-width: 56px;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--bcc-radius-pill);
+  border: 1px solid var(--bcc-color-border);
+  color: var(--bcc-color-text-muted);
+}
+
+.dayview-talk-suggest-kind--ticket {
+  color: var(--bcc-color-accent);
+  border-color: color-mix(in srgb, var(--bcc-color-accent) 30%, transparent);
+}
+
+.dayview-talk-suggest-kind--decision {
+  color: var(--bcc-color-success);
+  border-color: color-mix(in srgb, var(--bcc-color-success) 30%, transparent);
+}
+
+.dayview-talk-suggest-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.dayview-talk-suggest-label {
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dayview-talk-suggest-detail {
+  font-size: 12px;
+  color: var(--bcc-color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .dayview-talk-answer-block {

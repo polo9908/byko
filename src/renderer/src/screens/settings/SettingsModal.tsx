@@ -3,6 +3,7 @@ import type { ConnectorSummary, ConnectableConnectorId, UpcomingConnectorId } fr
 import { AI_PROVIDERS } from "@shared/ai"
 import type { AIProviderId } from "@shared/ai"
 import type { GoogleCalendarCredentialsStatus } from "@shared/googleCalendar"
+import type { PrivacySettings } from "@shared/privacy"
 import { cleanIpcErrorMessage } from "../../lib/ipcError"
 import { playSfx } from "@renderer/lib/sound"
 import GoogleCalendarSetupWizard from "./GoogleCalendarSetupWizard"
@@ -319,6 +320,248 @@ function CalendarDetail({
   )
 }
 
+/**
+ * Consentement au partage du journal et des décisions avec l'IA (contrat
+ * docs/ipc/assistant-context-privacy.md). L'interrupteur n'affiche que l'état
+ * persisté renvoyé par main : jamais de valeur par défaut ni d'état optimiste.
+ */
+function PrivacySection(): React.JSX.Element {
+  const [settings, setSettings] = useState<PrivacySettings | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  // La modale peut se fermer pendant un appel IPC : on ignore alors la réponse.
+  const mountedRef = useRef(true)
+  const switchRef = useRef<HTMLButtonElement>(null)
+  const retryRef = useRef<HTMLButtonElement>(null)
+  // Quand l'élément focalisé disparaît (interrupteur démonté, « Réessayer » retiré),
+  // le focus doit être déplacé explicitement, sinon il retombe sur <body>.
+  const [pendingFocus, setPendingFocus] = useState<"switch" | "retry" | null>(null)
+
+  useEffect(() => {
+    if (!pendingFocus) return
+    const target = pendingFocus === "switch" ? switchRef.current : retryRef.current
+    if (target) {
+      target.focus()
+      setPendingFocus(null)
+    }
+  }, [pendingFocus, settings, loadError])
+
+  function load(): void {
+    if (loading) return
+    const retryHadFocus = retryRef.current !== null && document.activeElement === retryRef.current
+    setLoading(true)
+    window.api.privacy
+      .get()
+      .then((result) => {
+        if (!mountedRef.current) return
+        // L'erreur n'est effacée qu'au succès : « Réessayer » reste monté (et focalisé) pendant l'appel.
+        setLoadError(null)
+        setSettings(result)
+        if (retryHadFocus) setPendingFocus("switch")
+      })
+      .catch((err: unknown) => {
+        if (mountedRef.current) setLoadError(cleanIpcErrorMessage(err))
+      })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false)
+      })
+  }
+
+  useEffect(() => {
+    mountedRef.current = true
+    load()
+    return () => {
+      mountedRef.current = false
+    }
+    // Chargement initial uniquement.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  async function handleToggle(): Promise<void> {
+    if (!settings || saving) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const persisted = await window.api.privacy.setShareRecentActivity(!settings.shareRecentActivityWithAi)
+      if (!mountedRef.current) return
+      setSettings(persisted)
+      playSfx("tick")
+    } catch (err) {
+      if (!mountedRef.current) return
+      setSaveError(cleanIpcErrorMessage(err))
+      // Retour à l'état réellement persisté : l'écriture a pu échouer après un changement partiel.
+      try {
+        const persisted = await window.api.privacy.get()
+        if (mountedRef.current) setSettings(persisted)
+      } catch (reloadErr) {
+        if (mountedRef.current) {
+          const switchHadFocus = switchRef.current !== null && document.activeElement === switchRef.current
+          setSettings(null)
+          setLoadError(cleanIpcErrorMessage(reloadErr))
+          // L'interrupteur va être démonté : le focus passe sur « Réessayer » plutôt que dans le vide.
+          if (switchHadFocus) setPendingFocus("retry")
+        }
+      }
+    } finally {
+      if (mountedRef.current) setSaving(false)
+    }
+  }
+
+  const checked = settings?.shareRecentActivityWithAi ?? false
+
+  return (
+    <>
+      <p className="settings-section-label">Confidentialité</p>
+      <div className="settings-row settings-privacy-row">
+        <div className="settings-row-info">
+          <label className="settings-privacy-label" htmlFor="settings-privacy-share" id="settings-privacy-share-label">
+            Partager mon activité récente (journal, décisions) avec l&apos;IA
+          </label>
+        </div>
+        {settings ? (
+          <button
+            id="settings-privacy-share"
+            type="button"
+            role="switch"
+            aria-checked={checked}
+            aria-labelledby="settings-privacy-share-label"
+            aria-describedby="settings-privacy-share-help"
+            // Pas de `disabled` : Chromium retirerait le focus clavier du bouton à chaque bascule.
+            // La garde `if (saving) return` de handleToggle bloque les déclenchements concurrents.
+            ref={switchRef}
+            aria-busy={saving}
+            aria-disabled={saving}
+            className={"settings-switch" + (checked ? " settings-switch--on" : "")}
+            onClick={() => void handleToggle()}
+          >
+            <span className="settings-switch-thumb" aria-hidden="true" />
+          </button>
+        ) : (
+          !loadError && (
+            <span className="settings-detail-hint" role="status">
+              Lecture du réglage…
+            </span>
+          )
+        )}
+      </div>
+      <div className="settings-privacy-help" id="settings-privacy-share-help">
+        <p className="settings-detail-hint settings-privacy-text">
+          Activé : votre journal d&apos;hier et vos décisions de réunion récentes sont envoyés à votre fournisseur
+          d&apos;IA avec vos questions à BCC.
+        </p>
+        <p className="settings-detail-hint settings-privacy-text">
+          Désactivé : les suggestions basées sur votre journal et vos réunions disparaissent, seules celles basées sur
+          vos tickets Jira restent disponibles.
+        </p>
+      </div>
+      {loadError && (
+        <div className="settings-privacy-help">
+          <p className="settings-detail-error" role="alert">
+            Impossible de lire le réglage de confidentialité : {loadError}
+          </p>
+          <button
+            ref={retryRef}
+            type="button"
+            className="settings-connect-button"
+            aria-busy={loading}
+            aria-disabled={loading}
+            onClick={load}
+          >
+            Réessayer
+          </button>
+        </div>
+      )}
+      {saveError && (
+        <div className="settings-privacy-help">
+          <p className="settings-detail-error" role="alert">
+            Le réglage n&apos;a pas été enregistré : {saveError}
+          </p>
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
+ * Raccourcis personnels appris localement (contrat : docs/ipc/personal-vocabulary.md).
+ * Ils restent sur l'appareil ; « Oublier » les efface tous. Rien de ce qui est affiché
+ * ici n'est envoyé à un service externe.
+ */
+function ShortcutsSection(): React.JSX.Element {
+  const [count, setCount] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const mountedRef = useRef(true)
+
+  useEffect(() => {
+    mountedRef.current = true
+    window.api.vocabulary
+      .list()
+      .then((list) => {
+        if (mountedRef.current) setCount(list.length)
+      })
+      .catch((err: unknown) => {
+        if (mountedRef.current) setError(cleanIpcErrorMessage(err))
+      })
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  async function handleForget(): Promise<void> {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      await window.api.vocabulary.forget()
+      if (mountedRef.current) setCount(0)
+    } catch (err) {
+      if (mountedRef.current) setError(cleanIpcErrorMessage(err))
+    } finally {
+      if (mountedRef.current) setBusy(false)
+    }
+  }
+
+  const countLabel = count === null ? "—" : count === 0 ? "Aucun" : `${count} ${count > 1 ? "raccourcis" : "raccourci"}`
+
+  return (
+    <>
+      <p className="settings-section-label">Raccourcis personnels</p>
+      <div className="settings-row">
+        <div className="settings-row-info">
+          <p className="settings-privacy-label">Raccourcis appris sur cet appareil</p>
+        </div>
+        <span className="settings-detail-hint">{countLabel}</span>
+      </div>
+      <div className="settings-privacy-help">
+        <p className="settings-detail-hint settings-privacy-text">
+          Quand vous choisissez une suggestion, BCC retient votre formulation pour la proposer en premier la
+          prochaine fois. Cet apprentissage reste sur cet appareil et n&apos;est jamais envoyé à votre
+          fournisseur d&apos;IA.
+        </p>
+        {count !== null && count > 0 && (
+          <button
+            type="button"
+            className="settings-connect-button"
+            aria-busy={busy}
+            aria-disabled={busy}
+            onClick={() => void handleForget()}
+          >
+            {busy ? "Suppression…" : "Oublier"}
+          </button>
+        )}
+        {error && (
+          <p className="settings-detail-error" role="alert">
+            {error}
+          </p>
+        )}
+      </div>
+    </>
+  )
+}
+
 function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
   const [connectors, setConnectors] = useState<ConnectorSummary[] | null>(null)
   const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
@@ -565,6 +808,10 @@ function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
         <p className="settings-section-label">Ajouter une source</p>
         {disconnectedRows.map(renderConnectorRow)}
         {UNIMPLEMENTED_ROWS.map(renderUnimplementedRow)}
+
+        <PrivacySection />
+
+        <ShortcutsSection />
 
         <div className="settings-footer">
           <span className="settings-footer-lock">

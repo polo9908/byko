@@ -167,7 +167,8 @@
   flex-shrink: 0;
 }
 
-.settings-connect-button:disabled {
+.settings-connect-button:disabled,
+.settings-connect-button[aria-disabled="true"] {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -267,6 +268,71 @@
   font-size: 9px;
   font-weight: 600;
   flex-shrink: 0;
+}
+
+/* Section Confidentialité : interrupteur de consentement au partage avec l'IA. */
+.settings-privacy-label {
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-privacy-help {
+  padding: 0 24px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.settings-privacy-text {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.settings-switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 13px;
+  background: var(--bcc-color-border);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.settings-switch--on {
+  background: var(--bcc-color-success);
+}
+
+.settings-switch:focus-visible {
+  outline: 2px solid var(--bcc-color-accent);
+  outline-offset: 2px;
+}
+
+/* Occupé : aria-disabled plutôt que `disabled`, pour que le bouton garde le focus clavier. */
+.settings-switch:disabled,
+.settings-switch[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: progress;
+}
+
+.settings-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(29, 29, 31, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.settings-switch--on .settings-switch-thumb {
+  transform: translateX(18px);
 }
 
 .settings-footer {
