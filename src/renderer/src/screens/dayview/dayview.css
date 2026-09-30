@@ -256,6 +256,66 @@
   margin-top: 0;
 }
 
+.dayview-talk-idle-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dayview-talk-type-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-pill);
+  background: none;
+  color: var(--bcc-color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.dayview-talk-type-button:hover,
+.dayview-talk-type-button:focus-visible {
+  color: var(--bcc-color-text);
+  border-color: var(--bcc-color-text-muted);
+}
+
+.dayview-talk-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dayview-suggestion-chip {
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-pill);
+  background: var(--bcc-color-surface);
+  color: var(--bcc-color-text);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.dayview-suggestion-chip:hover,
+.dayview-suggestion-chip:focus-visible {
+  border-color: var(--bcc-color-accent);
+  color: var(--bcc-color-accent);
+}
+
+.dayview-talk-recall-hint {
+  text-align: center;
+  margin-top: 4px;
+}
+
 .dayview-talk-kbd-hint {
   font-size: 12.5px;
   color: var(--bcc-color-text-muted);
@@ -351,6 +411,18 @@
 .dayview-talk-tickets {
   margin-top: 8px;
   text-align: left;
+}
+
+/* Marge horizontale pour que le surlignage de la ligne focus ne colle pas au texte. */
+.dayview-talk-tickets .journal-ticket-row {
+  padding: 12px 8px;
+  border-radius: 8px;
+}
+
+.dayview-talk-tickets .journal-ticket-row--focused {
+  outline: none;
+  background: color-mix(in srgb, var(--bcc-color-accent) 8%, transparent);
+  box-shadow: inset 2px 0 0 var(--bcc-color-accent);
 }
 
 .dayview-talk-close {
