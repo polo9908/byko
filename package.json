@@ -1,8 +1,8 @@
 {
   "name": "byko",
-  "productName": "BYKO",
+  "productName": "Byko",
   "version": "0.1.0",
-  "description": "BYKO desktop application",
+  "description": "Byko — l'assistant de journée des équipes produit",
   "main": "./out/main/index.js",
   "author": "Paul Lavergne",
   "private": true,

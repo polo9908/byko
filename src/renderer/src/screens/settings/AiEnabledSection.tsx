@@ -60,7 +60,7 @@ function AiEnabledSection(): React.JSX.Element {
             {settings === null && !error
               ? "Lecture du réglage…"
               : enabled
-                ? "BCC peut appeler votre fournisseur d'IA : réponses de BCC, comptes rendus, extraction des décisions en point d'équipe."
+                ? "Byko peut appeler votre fournisseur d'IA : réponses de Byko, comptes rendus, extraction des décisions en point d'équipe."
                 : "Aucun appel à l'IA, aucun token consommé, aucune donnée envoyée. Agenda, journal et connecteurs restent utilisables."}
           </span>
         </div>

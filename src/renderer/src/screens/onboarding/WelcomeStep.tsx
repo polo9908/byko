@@ -46,7 +46,7 @@ function WelcomeStep({ initialEmail = "", initialRole, onContinue }: WelcomeStep
       <section className="onboarding-step">
         <OnboardingHeader stepIndex={0} totalSteps={5} timeLabel="2 min" />
 
-        <h1 className="onboarding-title">Configurons BCC.</h1>
+        <h1 className="onboarding-title">Configurons Byko.</h1>
 
         <div className="onboarding-meta-row">
           <span className="onboarding-meta-item">

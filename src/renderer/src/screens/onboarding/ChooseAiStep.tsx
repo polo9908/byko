@@ -183,7 +183,7 @@ function ChooseAiStep({ onBack, onContinue }: ChooseAiStepProps): React.JSX.Elem
                   <span className="onboarding-checklist-index">1</span>« Create key »
                 </li>
                 <li>
-                  <span className="onboarding-checklist-index">2</span>Nommez-la « BCC »
+                  <span className="onboarding-checklist-index">2</span>Nommez-la « Byko »
                 </li>
                 <li>
                   <span className="onboarding-checklist-index">3</span>Copiez la clé

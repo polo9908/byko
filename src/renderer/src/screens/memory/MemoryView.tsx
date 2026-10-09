@@ -431,7 +431,7 @@ function MemoryView({ onBack }: MemoryViewProps): React.JSX.Element {
               label="Résultats"
               count={hits ? hits.length + reportHits.length : null}
               loading={hits === null}
-              empty="Rien ne correspond. Essayez d'autres mots, ou posez la question à BCC."
+              empty="Rien ne correspond. Essayez d'autres mots, ou posez la question à Byko."
               limit={12}
             >
               {(hits ?? []).map((hit) => {
@@ -481,10 +481,10 @@ function MemoryView({ onBack }: MemoryViewProps): React.JSX.Element {
 
             <section className="journal-section memory-ask">
               <button type="button" className="global-journal-button" disabled={asking} onClick={() => void handleAsk()}>
-                {asking ? "BCC cherche…" : "Demander à BCC"}
+                {asking ? "Byko cherche…" : "Demander à Byko"}
               </button>
               <span className="memory-ask-hint">
-                BCC répond à partir des décisions consignées, envoyées à votre IA pour cette question.
+                Byko répond à partir des décisions consignées, envoyées à votre IA pour cette question.
               </span>
               {answer && answer.question === text && (
                 <p className="memory-answer" role="status">

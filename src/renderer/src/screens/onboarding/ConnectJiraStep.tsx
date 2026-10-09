@@ -181,7 +181,7 @@ function ConnectJiraStep({ email, onBack, onContinue }: ConnectJiraStepProps): R
                   <span className="onboarding-checklist-index">1</span>« Créer un jeton d&apos;API »
                 </li>
                 <li>
-                  <span className="onboarding-checklist-index">2</span>Nommez-le « BCC »
+                  <span className="onboarding-checklist-index">2</span>Nommez-le « Byko »
                 </li>
                 <li>
                   <span className="onboarding-checklist-index">3</span>Cliquez « Copier »

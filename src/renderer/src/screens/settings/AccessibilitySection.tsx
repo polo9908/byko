@@ -288,13 +288,13 @@ function AccessibilitySection(): React.JSX.Element {
           ))}
         </div>
         <div className="settings-toast-preview" aria-hidden="true">
-          <b>BYKO · Point d&apos;équipe</b>
+          <b>Byko · Point d&apos;équipe</b>
           <span>Votre réunion commence dans 5 minutes.</span>
           {/* `key` : la barre repart de zéro à chaque changement de durée. */}
           <i key={prefs.notificationSeconds} style={{ animationDuration: `${prefs.notificationSeconds}s` }} />
         </div>
         <p className="settings-detail-hint">
-          Quand BYKO n&apos;est pas au premier plan, l&apos;alerte apparaît en bas à droite de l&apos;écran et y reste
+          Quand Byko n&apos;est pas au premier plan, l&apos;alerte apparaît en bas à droite de l&apos;écran et y reste
           ce temps-là. Un clic la ferme.
         </p>
         <button type="button" className="settings-connect-button" onClick={() => void handleTest()}>

@@ -35,19 +35,19 @@ function GithubSetupWizard({ onConnected, onCancel }: GithubSetupWizardProps): R
       title="Connecter GitHub avec votre propre jeton"
       intro={
         <>
-          BYKO lit vos pull requests et vos releases pour les relier aux tickets créés en réunion. Il
+          Byko lit vos pull requests et vos releases pour les relier aux tickets créés en réunion. Il
           n&apos;écrit jamais sur GitHub ; le jeton est enregistré, chiffré, uniquement sur cet appareil.
         </>
       }
       steps={[
         {
           title: "Ouvrir la création d'un jeton « fine-grained »",
-          body: <>Connectez-vous, nommez le jeton « BYKO » et choisissez une durée raisonnable.</>,
+          body: <>Connectez-vous, nommez le jeton « Byko » et choisissez une durée raisonnable.</>,
           open: () => window.api.github.openTokenPage(),
         },
         {
           title: "Limiter le jeton aux dépôts concernés",
-          body: <>« Only select repositories », puis les dépôts dont BYKO doit suivre les pull requests.</>,
+          body: <>« Only select repositories », puis les dépôts dont Byko doit suivre les pull requests.</>,
         },
         {
           title: "Autoriser la lecture seule",

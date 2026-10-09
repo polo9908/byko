@@ -34,7 +34,7 @@ function FigmaSetupWizard({ onConnected, onCancel }: FigmaSetupWizardProps): Rea
       title="Connecter Figma avec votre propre jeton"
       intro={
         <>
-          BYKO ne stocke aucun jeton partagé : vous créez le vôtre et il n&apos;est enregistré,
+          Byko ne stocke aucun jeton partagé : vous créez le vôtre et il n&apos;est enregistré,
           chiffré, que sur cet appareil.
         </>
       }
@@ -45,7 +45,7 @@ function FigmaSetupWizard({ onConnected, onCancel }: FigmaSetupWizardProps): Rea
           open: () => window.api.figma.openTokenPage(),
         },
         {
-          title: "Créer un jeton personnel nommé « BCC »",
+          title: "Créer un jeton personnel nommé « Byko »",
           body: <>Dans « Jetons personnels », cliquez « Générer un nouveau jeton ».</>,
         },
         {

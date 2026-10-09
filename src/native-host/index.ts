@@ -27,7 +27,7 @@ function sendToExtension(message: unknown): void {
 
 function relayToByko(message: unknown): void {
   if (!bykoReady) {
-    trace("BYKO n'est pas joignable, message abandonné.")
+    trace("Byko n'est pas joignable, message abandonné.")
     return
   }
   connection.write(`${JSON.stringify(message)}\n`)
@@ -36,7 +36,7 @@ function relayToByko(message: unknown): void {
 connection.setEncoding("utf8")
 connection.on("connect", () => {
   bykoReady = true
-  trace(`connecté à BYKO (${socketPath})`)
+  trace(`connecté à Byko (${socketPath})`)
 })
 connection.on("data", (chunk: string | Buffer) => {
   buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8")
@@ -48,20 +48,20 @@ connection.on("data", (chunk: string | Buffer) => {
       try {
         sendToExtension(JSON.parse(line))
       } catch {
-        trace("message de BYKO illisible, ignoré.")
+        trace("message de Byko illisible, ignoré.")
       }
     }
     index = buffer.indexOf("\n")
   }
 })
 connection.on("error", (error: Error) => {
-  trace(`BYKO injoignable : ${error.message}`)
+  trace(`Byko injoignable : ${error.message}`)
   // Sortir en erreur fait remonter une cause lisible à l'extension, plutôt
   // qu'un port ouvert dans le vide.
   process.exit(1)
 })
 connection.on("close", () => {
-  trace("BYKO a fermé le pont.")
+  trace("Byko a fermé le pont.")
   process.exit(0)
 })
 

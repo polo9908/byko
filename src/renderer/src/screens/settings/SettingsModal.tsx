@@ -360,7 +360,7 @@ function CalendarDetail({
     <div className="settings-detail">
       {credentials && !credentials.configured && (
         <p className="settings-detail-warning">
-          Google Agenda cessera de se synchroniser au plus tard dans l&apos;heure : BYKO n&apos;intègre plus de clé
+          Google Agenda cessera de se synchroniser au plus tard dans l&apos;heure : Byko n&apos;intègre plus de clé
           Google partagée. La frise de la journée reviendra alors aux jalons par défaut. Cliquez « Utiliser
           d&apos;autres identifiants Google » ci-dessous pour créer vos propres identifiants (2 minutes, une seule
           fois).
@@ -528,7 +528,7 @@ function PrivacySection(): React.JSX.Element {
       <div className="settings-privacy-help" id="settings-privacy-share-help">
         <p className="settings-detail-hint settings-privacy-text">
           Activé : votre journal d&apos;hier et vos décisions de réunion récentes sont envoyés à votre fournisseur
-          d&apos;IA avec vos questions à BCC.
+          d&apos;IA avec vos questions à Byko.
         </p>
         <p className="settings-detail-hint settings-privacy-text">
           Désactivé : les suggestions basées sur votre journal et vos réunions disparaissent, seules celles basées sur
@@ -616,7 +616,7 @@ function ShortcutsSection(): React.JSX.Element {
       </div>
       <div className="settings-privacy-help">
         <p className="settings-detail-hint settings-privacy-text">
-          Quand vous choisissez une suggestion, BCC retient votre formulation pour la proposer en premier la
+          Quand vous choisissez une suggestion, Byko retient votre formulation pour la proposer en premier la
           prochaine fois. Cet apprentissage reste sur cet appareil et n&apos;est jamais envoyé à votre
           fournisseur d&apos;IA.
         </p>
@@ -958,7 +958,7 @@ function SettingsModal({ onClose, initialSection = "connectors" }: SettingsModal
             <span className="settings-footer-lock">
               🔒 {encryptionAvailable ? "Clés chiffrées sur cet appareil" : "Chiffrement indisponible sur cet appareil"}
             </span>
-            <span>BCC {version}</span>
+            <span>Byko {version}</span>
           </div>
         </nav>
 

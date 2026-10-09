@@ -55,7 +55,7 @@ function AiSetupWizard({ onConnected, onCancel }: AiSetupWizardProps): React.JSX
       title="Connecter votre IA avec votre propre clé"
       intro={
         <>
-          BYKO n&apos;intègre aucune clé partagée : vous gardez votre compte {meta.label} et le
+          Byko n&apos;intègre aucune clé partagée : vous gardez votre compte {meta.label} et le
           contrôlez depuis sa console. La clé n&apos;est enregistrée, chiffrée, que sur cet appareil.
         </>
       }
@@ -66,7 +66,7 @@ function AiSetupWizard({ onConnected, onCancel }: AiSetupWizardProps): React.JSX
           open: () => window.api.ai.openKeyPage(provider),
         },
         {
-          title: "Créer une clé nommée « BCC »",
+          title: "Créer une clé nommée « Byko »",
           body: <>Pour retrouver facilement qui l&apos;utilise, puis validez la création.</>,
         },
         {

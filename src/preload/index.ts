@@ -178,6 +178,10 @@ const api = {
   digest: {
     get: (): Promise<DailyDigest> => ipcRenderer.invoke("digest:get"),
   },
+  feedback: {
+    /** Ouvre, dans le navigateur, un retour prérempli avec ce texte : rien n'est envoyé sans validation de l'utilisateur. */
+    send: (message: string): Promise<void> => ipcRenderer.invoke("feedback:send", message),
+  },
   accounts: {
     list: (): Promise<AccountSummary[]> => ipcRenderer.invoke("accounts:list"),
     /** Connexion rapide à un compte déjà enregistré ; la fenêtre se recharge sur ce compte. */

@@ -93,7 +93,7 @@ function ConnectFigmaStep({ onBack, onContinue, onSkip }: ConnectFigmaStepProps)
                   <span className="onboarding-checklist-index">1</span>Onglet « Sécurité »
                 </li>
                 <li>
-                  <span className="onboarding-checklist-index">2</span>Nommez-le « BCC »
+                  <span className="onboarding-checklist-index">2</span>Nommez-le « Byko »
                 </li>
                 <li>
                   <span className="onboarding-checklist-index">3</span>Copiez le jeton

@@ -31,10 +31,10 @@ export async function getProfile(): Promise<ProfileState> {
   if (!isEncryptionAvailable()) return { accountId: getActiveAccountId() ?? undefined, ownsLegacyData: isLegacyOwner(getActiveAccountId()), onboarded: false, signedIn: true }
   try {
     const [stored, onboardedFlag, storedName, storedRole] = await Promise.all([
-      getSecret(EMAIL_KEY),
-      getSecret(ONBOARDED_KEY),
-      getSecret(NAME_KEY),
-      getSecret(ROLE_KEY),
+      readField(EMAIL_KEY),
+      readField(ONBOARDED_KEY),
+      readField(NAME_KEY),
+      readField(ROLE_KEY),
     ])
     // Valeur relue du disque : hors liste blanche, elle est ignorée.
     const role = isProfileRole(storedRole) ? storedRole : undefined
@@ -61,6 +61,20 @@ export async function getProfile(): Promise<ProfileState> {
     // Fichier illisible ou secret indéchiffrable : même repli, sans citer de contenu ni de chemin.
     console.warn(`[profile] lecture impossible (${error instanceof Error ? error.name : "inconnu"}) ; démarrage comme une première fois.`)
     return { accountId: getActiveAccountId() ?? undefined, ownsLegacyData: isLegacyOwner(getActiveAccountId()), onboarded: false, signedIn: true }
+  }
+}
+
+/**
+ * Un champ du profil indéchiffrable (écrit avec une autre clé, abîmé) vaut « absent » : il sera redemandé ou repris de Jira,
+ * sans renvoyer toute l'installation à l'assistant de démarrage. Un fichier illisible en entier reste une erreur.
+ */
+async function readField(key: string): Promise<string | undefined> {
+  try {
+    return await getSecret(key)
+  } catch (error) {
+    if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code !== undefined) throw error
+    console.warn(`[profile] champ « ${key} » illisible, ignoré.`)
+    return undefined
   }
 }
 

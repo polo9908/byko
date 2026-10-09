@@ -67,7 +67,7 @@ export const DEFAULT_TOKENS = {
 }
 
 export const PALETTES: PaletteDefinition[] = [
-  { id: "standard", label: "Standard", hint: "Couleurs d'origine de BYKO.", tokens: {} },
+  { id: "standard", label: "Standard", hint: "Couleurs d'origine de Byko.", tokens: {} },
   {
     id: "red-green",
     label: "Rouge-vert",

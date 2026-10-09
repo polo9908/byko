@@ -22,6 +22,9 @@ const DEFAULTS: AutonomyCategory[] = [
   { id: "statut-tickets", label: "Statut des tickets", level: 2 },
 ]
 
+/** Catégories derrière lesquelles une action existe réellement : les autres ne sont pas affichées tant que rien ne les consomme. */
+const IMPLEMENTED: AutonomyCategoryId[] = ["statut-tickets"]
+
 function autonomyFilePath(): string {
   return accountDataPath("autonomy.json")
 }
@@ -45,7 +48,7 @@ async function writeCategories(categories: AutonomyCategory[]): Promise<void> {
 }
 
 export async function list(): Promise<AutonomyCategory[]> {
-  return readCategories()
+  return (await readCategories()).filter((category) => IMPLEMENTED.includes(category.id))
 }
 
 export async function setLevel(id: AutonomyCategoryId, level: number): Promise<AutonomyCategory[]> {
@@ -53,7 +56,7 @@ export async function setLevel(id: AutonomyCategoryId, level: number): Promise<A
   const categories = await readCategories()
   const next = categories.map((category) => (category.id === id ? { ...category, level: clamped } : category))
   await writeCategories(next)
-  return next
+  return next.filter((category) => IMPLEMENTED.includes(category.id))
 }
 
 export async function isAutonomous(id: AutonomyCategoryId): Promise<boolean> {

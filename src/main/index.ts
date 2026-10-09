@@ -38,6 +38,8 @@ import * as profile from "./profile"
 import * as glossary from "./glossary"
 import * as memory from "./memory"
 import { buildDigest } from "./digest"
+import * as feedback from "./feedback"
+import { startAutoUpdate } from "./updater"
 import type { DailyDigest } from "../shared/digest"
 import type { MemoryHit, MemoryState } from "../shared/memory"
 import { MEMORY_QUERY_MIN } from "../shared/memory"
@@ -96,6 +98,12 @@ function attendeesPromptLines(value: unknown, forItems = false): string[] {
       : "Quand quelqu'un de cette liste est nommé pour faire quelque chose, écris-le avec son prénom exact (ex. « Sarah envoie le devis »). N'attribue rien si personne n'est nommé.",
   ]
 }
+
+// Le nom affiché (installeur, titre) est « Byko », mais le nom interne reste « BYKO » : sur macOS, la clé de chiffrement de
+// `safeStorage` vit dans le trousseau sous « <nom> Safe Storage ». Changer ce nom rendrait illisibles tous les jetons déjà
+// enregistrés. Le dossier de données est fixé de la même façon. À faire avant `ready` et avant toute lecture de `userData`.
+app.setName("BYKO")
+app.setPath("userData", join(app.getPath("appData"), "BYKO"))
 
 function assertNonEmptyString(value: unknown, name: string): string {
   if (typeof value !== "string" || value.trim() === "") {
@@ -381,7 +389,7 @@ app.whenReady().then(async () => {
   try {
     await accounts.initAccounts()
   } catch (error) {
-    dialog.showErrorBox("BYKO", error instanceof Error ? error.message : "Impossible d'ouvrir les comptes.")
+    dialog.showErrorBox("Byko", error instanceof Error ? error.message : "Impossible d'ouvrir les comptes.")
     app.quit()
     return
   }
@@ -572,6 +580,9 @@ app.whenReady().then(async () => {
   }
   setTimeout(scheduledLinkSync, LINK_SYNC_FIRST_DELAY_MS)
   setInterval(scheduledLinkSync, LINK_SYNC_INTERVAL_MS)
+
+  // Mise à jour automatique de l'app installée (docs/release.md) ; sans effet en développement.
+  startAutoUpdate()
 
   ipcMain.handle("calendar:connect", () => googleCalendar.connect())
   ipcMain.handle("calendar:getStatus", () => googleCalendar.getStatus())
@@ -1026,6 +1037,9 @@ app.whenReady().then(async () => {
       tracked: settledOrEmpty(tracked, "liens de tickets", "digest:get"),
     })
   })
+
+  // Retour utilisateur (docs/ipc/feedback.md) : le renderer n'envoie que du texte, main construit l'adresse.
+  ipcMain.handle("feedback:send", (_event, message: unknown): Promise<void> => feedback.send(feedback.assertMessage(message)))
 
   // Notifications en bas à droite (contrat : docs/ipc/notifications.md).
   ipcMain.handle(

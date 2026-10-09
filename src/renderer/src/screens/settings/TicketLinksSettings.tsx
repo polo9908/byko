@@ -192,7 +192,7 @@ function TicketLinksSettings({ githubConnected, figmaConnected }: TicketLinksSet
           <p className="settings-detail-hint settings-privacy-text" role="status">
             {formatSync(state.lastSyncAt)} {state.tickets.length}{" "}
             {state.tickets.length > 1 ? "tickets suivis" : "ticket suivi"}. Relève automatique toutes les 5 minutes
-            tant que BYKO est ouvert.
+            tant que Byko est ouvert.
           </p>
         )}
         {state?.errors.map((message) => (

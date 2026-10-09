@@ -40,7 +40,7 @@ function singleLine(text: string): string {
   return text.replace(/\s+/g, " ").trim()
 }
 
-export const JOURNAL_HEADING = "Activité d'hier (journal des actions de BCC) :"
+export const JOURNAL_HEADING = "Activité d'hier (journal des actions de Byko) :"
 export const JOURNAL_EMPTY = "Aucune activité enregistrée hier."
 export const JOURNAL_UNAVAILABLE =
   "Journal d'hier indisponible (lecture impossible) : n'en tire aucune conclusion."
@@ -108,7 +108,7 @@ export function buildAskPrompt(
         ]
 
   return [
-    "Tu es BCC, un assistant qui aide un développeur à gérer ses tickets Jira,",
+    "Tu es Byko, un assistant qui aide un développeur à gérer ses tickets Jira,",
     "ses intégrations et sa journée de travail. Réponds brièvement et",
     "clairement en français à la question ou demande suivante. Base-toi",
     ...grounding,

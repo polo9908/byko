@@ -1,0 +1,61 @@
+# Construit et publie les installeurs macOS et Windows quand une étiquette « v… » est poussée (voir docs/release.md).
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      # Requis par la seule étape de publication ; le jeton n'est remis qu'à elle (voir `persist-credentials`).
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Le jeton du flux ne reste pas dans `.git/config` : `npm ci` et le build n'y ont pas accès.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      # Aucun secret de `.env` n'existe ici : rien ne peut être embarqué au build (voir CLAUDE.md).
+      - run: npm run build
+
+      - name: Signature macOS absente
+        if: matrix.os == 'macos-latest' && env.HAS_CERT != 'true'
+        env:
+          HAS_CERT: ${{ secrets.MAC_CSC_LINK != '' }}
+        run: echo "::warning::MAC_CSC_LINK absent — l'installeur macOS ne sera ni signé ni notarisé ; macOS le bloquera chez un tiers et la mise à jour automatique ne fonctionnera pas."
+
+      # Chaque plateforme ne reçoit que ses propres secrets de signature.
+      - name: Installeur macOS
+        if: matrix.os == 'macos-latest'
+        run: npx electron-builder --mac --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Installeur Windows
+        if: matrix.os == 'windows-latest'
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}

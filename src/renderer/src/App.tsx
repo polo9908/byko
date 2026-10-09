@@ -12,6 +12,7 @@ import SettingsModal from "./screens/settings/SettingsModal"
 import type { SettingsSectionId } from "./screens/settings/SettingsModal"
 import JournalView from "./screens/journal/JournalView"
 import MemoryView from "./screens/memory/MemoryView"
+import FeedbackButton from "./screens/feedback/FeedbackButton"
 import DayView from "./screens/dayview/DayView"
 import { pickPointMeeting } from "./lib/pointMeeting"
 import PointDEquipeView from "./screens/dayview/PointDEquipeView"
@@ -181,9 +182,12 @@ function App(): React.JSX.Element {
         onContinue={(value, chosenRole) => {
           setEmail(value)
           setRole(chosenRole)
-          window.api.profile.saveRole(chosenRole).catch((err: unknown) => console.warn("Rôle non mémorisé :", err))
           // Mémorisé localement : plus à le ressaisir. Un échec n'empêche pas de continuer.
-          window.api.profile.saveEmail(value).catch((err: unknown) => console.warn("E-mail non mémorisé :", err))
+          // L'un après l'autre : deux écritures simultanées du magasin chiffré s'écraseraient.
+          window.api.profile
+            .saveEmail(value)
+            .then(() => window.api.profile.saveRole(chosenRole))
+            .catch((err: unknown) => console.warn("Profil non mémorisé :", err))
           goTo("jira")
         }}
       />
@@ -269,6 +273,8 @@ function App(): React.JSX.Element {
       {/* Réglages : accessibles depuis le menu de profil, donc depuis toutes les vues qui l'affichent. */}
       {settingsOpen && <SettingsModal initialSection={settingsSection} onClose={() => setSettingsOpen(false)} />}
       {(stage === "day" || stage === "pointdequipe") && <SpeechModelPill />}
+      {/* Retour utilisateur : présent sur tous les écrans, assistant de démarrage compris. */}
+      {stage !== "loading" && <FeedbackButton />}
       {showProfile && (
         <div className="global-topbar">
           {showJournalButton && (

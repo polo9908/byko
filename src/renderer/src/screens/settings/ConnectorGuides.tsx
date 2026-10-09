@@ -11,7 +11,7 @@ interface ConnectorGuide {
 }
 
 const NOT_AVAILABLE_YET =
-  "BYKO ne se connecte pas encore à ce service : rien à préparer aujourd'hui. Voici la marche à suivre qui sera nécessaire."
+  "Byko ne se connecte pas encore à ce service : rien à préparer aujourd'hui. Voici la marche à suivre qui sera nécessaire."
 
 /**
  * Guides des connecteurs annoncés dans Réglages mais sans backend (E3, D2).
@@ -32,13 +32,13 @@ const GUIDES: Record<UpcomingConnectorId, ConnectorGuide> = {
       },
       {
         title: "Choisir l'espace de travail",
-        body: <>Sélectionnez l&apos;espace dont BYKO devra lire les fils de discussion.</>,
+        body: <>Sélectionnez l&apos;espace dont Byko devra lire les fils de discussion.</>,
       },
       {
         title: "Autoriser la lecture des fils et des messages",
         body: (
           <>
-            BYKO demandera ces permissions par OAuth, comme pour Google Agenda : aucune clé à
+            Byko demandera ces permissions par OAuth, comme pour Google Agenda : aucune clé à
             copier-coller.
           </>
         ),
@@ -55,8 +55,8 @@ const GUIDES: Record<UpcomingConnectorId, ConnectorGuide> = {
         open: () => window.api.settings.openSetupPage("microsoftEntraApps"),
       },
       {
-        title: "Enregistrer une application pour BYKO",
-        body: <>Nom libre, puis créez un secret client — il sera saisi dans BYKO, jamais partagé.</>,
+        title: "Enregistrer une application pour Byko",
+        body: <>Nom libre, puis créez un secret client — il sera saisi dans Byko, jamais partagé.</>,
       },
       {
         title: "Autoriser les permissions Microsoft Graph",
@@ -74,8 +74,8 @@ const GUIDES: Record<UpcomingConnectorId, ConnectorGuide> = {
         open: () => window.api.settings.openSetupPage("microsoftEntraApps"),
       },
       {
-        title: "Enregistrer une application pour BYKO",
-        body: <>Nom libre, puis créez un secret client — il sera saisi dans BYKO, jamais partagé.</>,
+        title: "Enregistrer une application pour Byko",
+        body: <>Nom libre, puis créez un secret client — il sera saisi dans Byko, jamais partagé.</>,
       },
       {
         title: "Autoriser les permissions Microsoft Graph",

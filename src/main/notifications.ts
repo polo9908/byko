@@ -164,8 +164,8 @@ export function show(payload: NotificationPayload): NotificationResult {
 /** Bouton « Tester » des Réglages : s'affiche même si l'app est au premier plan. */
 export function test(durationSeconds: NotificationDuration, options: { highContrast: boolean; reduceMotion: boolean }): NotificationResult {
   display({
-    title: "BYKO · Notification de test",
-    body: `Cette notification reste affichée ${formatDuration(durationSeconds)}. Cliquez dessus pour ouvrir BYKO.`,
+    title: "Byko · Notification de test",
+    body: `Cette notification reste affichée ${formatDuration(durationSeconds)}. Cliquez dessus pour ouvrir Byko.`,
     durationSeconds,
     target: "settings-accessibility",
     ...options,

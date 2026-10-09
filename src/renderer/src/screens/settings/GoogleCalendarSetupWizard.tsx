@@ -25,7 +25,7 @@ const SETUP_STEPS: Record<GoogleCalendarSetupPage, SetupStep> = {
     title: "Créer un projet",
     body: (
       <>
-        Donnez-lui un nom libre (par exemple « BYKO perso »), cliquez « Créer », puis vérifiez
+        Donnez-lui un nom libre (par exemple « Byko perso »), cliquez « Créer », puis vérifiez
         qu&apos;il est bien sélectionné en haut de la console.
       </>
     ),
@@ -38,7 +38,7 @@ const SETUP_STEPS: Record<GoogleCalendarSetupPage, SetupStep> = {
     title: "Configurer l'écran de consentement",
     body: (
       <>
-        Cliquez « Commencer », puis renseignez le nom de l&apos;application (par exemple « BYKO »)
+        Cliquez « Commencer », puis renseignez le nom de l&apos;application (par exemple « Byko »)
         et votre e-mail d&apos;assistance. Audience : <strong>Externe</strong>. Indiquez votre
         e-mail de contact, acceptez les conditions, puis « Créer ». Laissez l&apos;application en
         mode Test : ne la publiez pas.
@@ -171,7 +171,7 @@ function GoogleCalendarSetupWizard({
       title="Connecter Google Agenda avec vos propres identifiants"
       intro={
         <>
-          BYKO est open source : aucune clé Google partagée n&apos;est intégrée à l&apos;application.
+          Byko est open source : aucune clé Google partagée n&apos;est intégrée à l&apos;application.
           Vous créez votre propre accès en 2 minutes environ, une seule fois. Il reste sous votre
           contrôle et n&apos;est enregistré que sur cet appareil.
         </>

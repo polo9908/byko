@@ -343,7 +343,7 @@ function waitForAuthorizationCode(
     const server = createServer((req, res) => {
       const url = new URL(req.url ?? "/", "http://127.0.0.1")
       res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
-      res.end("<!doctype html><html><body><p>Vous pouvez fermer cet onglet et revenir à BYKO.</p></body></html>")
+      res.end("<!doctype html><html><body><p>Vous pouvez fermer cet onglet et revenir à Byko.</p></body></html>")
       if (url.pathname !== "/callback") return
       const error = url.searchParams.get("error")
       const code = url.searchParams.get("code")
@@ -410,7 +410,7 @@ async function runAuthorizationFlow(credentials: ClientCredentials, signal: Abor
   )
   if (!tokenBody.refresh_token) {
     throw new Error(
-      "Google n'a pas renvoyé de jeton de renouvellement. Révoquez l'accès BYKO existant depuis myaccount.google.com/permissions puis reconnectez.",
+      "Google n'a pas renvoyé de jeton de renouvellement. Révoquez l'accès Byko existant depuis myaccount.google.com/permissions puis reconnectez.",
     )
   }
 

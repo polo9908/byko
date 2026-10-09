@@ -41,7 +41,6 @@ function isoToMinutes(iso: string): number {
   return date.getHours() * 60 + date.getMinutes()
 }
 
-
 /**
  * Vue journée (tickets B1 timeline + B2 état par défaut + B4 « Parler à
  * BCC »), fidèle au prototype. Le nombre de tickets vient de Jira (E1,
@@ -49,7 +48,7 @@ function isoToMinutes(iso: string): number {
  * Agenda (E4) une fois connecté — sinon la frise n'est qu'une simple ligne, sans faux jalons. `calendarEvents` est récupéré et tenu à jour par `App` (pas ici)
  * car il sert aussi à basculer automatiquement vers « Point d'équipe » quand
  * une réunion commence, ce qui doit survivre au démontage de cet écran.
- * « fils Slack » reste le texte du prototype tant qu'E3 n'est pas câblé.
+ * Le sous-titre ne cite que ce qui est réellement surveillé (tickets, agenda s'il est connecté).
  * Aucun popover de notification n'est affiché pour la même raison.
  */
 function DayView({
@@ -97,9 +96,6 @@ function DayView({
       eventId: event.id,
     }))
 
-  const hour = now.getHours()
-  const statusLabel = hour < 12 ? "Silence" : hour < 17 ? "Focus" : "Silence"
-
   // Une fenêtre modale ouverte (carte de détail, Réglages) rend tout l'écran inerte : ni souris, ni clavier,
   // ni lecteur d'écran n'atteignent l'arrière-plan, et la goutte de la frise se met en pause.
   const modalOpen = selected !== null || blocked
@@ -110,8 +106,6 @@ function DayView({
         <div className="dayview-header">
           <div className="dayview-header-left">
             <span className="dayview-header-time">{formatTime(now)}</span>
-            <span>·</span>
-            <span>{statusLabel}</span>
           </div>
           <div className="dayview-header-right">
             {!muted && !soundReady && (
@@ -162,8 +156,8 @@ function DayView({
                 : `${attention.length} points à regarder.`}
           </h1>
           <p className="dayview-subtitle">
-            Je veille sur {ticketCount === null ? "vos" : ticketCount} tickets, 3 fils Slack et
-            votre agenda.
+            Je veille sur {ticketCount === null ? "vos tickets" : `${ticketCount} ticket${ticketCount > 1 ? "s" : ""}`}
+            {calendarEvents !== null ? " et votre agenda" : ""}.
           </p>
 
           {attention.length > 0 && (

@@ -454,14 +454,14 @@ function TalkToBcc(): React.JSX.Element {
             onClick={() => void handleOpen()}
           >
             <span className="dayview-status-dot" aria-hidden="true" />
-            Parler à BCC
+            Parler à Byko
           </button>
           <button
             type="button"
             className="dayview-talk-type-button"
             onClick={handleOpenTyping}
-            aria-label="Écrire à BCC"
-            title="Écrire à BCC (T)"
+            aria-label="Écrire à Byko"
+            title="Écrire à Byko (T)"
           >
             <svg width="18" height="14" viewBox="0 0 18 14" fill="none" aria-hidden="true">
               <rect x="0.75" y="0.75" width="16.5" height="12.5" rx="2.25" stroke="currentColor" strokeWidth="1.5" />
@@ -515,7 +515,7 @@ function TalkToBcc(): React.JSX.Element {
               <input
                 className="onboarding-input dayview-talk-input"
                 type="text"
-                placeholder="Écrivez votre question à BCC…"
+                placeholder="Écrivez votre question à Byko…"
                 value={typedText}
                 autoFocus
                 role="combobox"
@@ -639,7 +639,7 @@ function TalkToBcc(): React.JSX.Element {
         </div>
       )}
 
-      {phase === "thinking" && <p className="dayview-talk-status">BCC réfléchit…</p>}
+      {phase === "thinking" && <p className="dayview-talk-status">Byko réfléchit…</p>}
 
       {phase === "answered" && answer && (
         <div className="dayview-talk-answer-block">
