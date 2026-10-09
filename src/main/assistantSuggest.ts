@@ -32,7 +32,7 @@ const SOURCE_ORDER: Record<AssistantSuggestionKind, number> = { ticket: 0, decis
  * 2 si un mot commence par le premier terme, 1 pour une simple sous-chaîne.
  * `fields` : textes déjà normalisés dans lesquels on cherche (ex. clé + résumé).
  */
-function score(fields: string[], normalizedQuery: string, terms: string[]): number {
+export function score(fields: string[], normalizedQuery: string, terms: string[]): number {
   const haystack = fields.join(" ")
   if (!terms.every((term) => haystack.includes(term))) return 0
   if (fields.some((field) => field.startsWith(normalizedQuery))) return 3

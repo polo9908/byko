@@ -59,6 +59,19 @@
   cursor: pointer;
 }
 
+/* Décisions de réunion qui attendent d'être consignées dans la Mémoire. */
+.dayview-memory-badge {
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: var(--bcc-radius-pill);
+  background: var(--bcc-color-accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
 .dayview-icon-button {
   width: 30px;
   height: 30px;
@@ -79,7 +92,7 @@
 /* Timeline (B1) */
 .dayview-timeline {
   position: relative;
-  height: 40px;
+  height: 52px;
   margin: 48px 24px 0;
 }
 
@@ -100,7 +113,6 @@
   height: 2px;
   border-radius: 1px;
   background: rgba(0, 0, 0, 0.2);
-  transition: width 1s linear;
 }
 
 .dayview-timeline-now {
@@ -126,6 +138,14 @@
   cursor: pointer;
 }
 
+/* Goutte d'eau de la frise (voir lib/waterDrop.ts) : canvas posé sur la frise, traversé par le pointeur. */
+.dayview-timeline-drop {
+  position: absolute;
+  z-index: 20;
+  pointer-events: none;
+  max-width: none;
+}
+
 .dayview-timeline-tick {
   width: 2px;
   height: 10px;
@@ -144,7 +164,7 @@
 
 .dayview-timeline-label {
   margin-top: 8px;
-  font-size: 12.5px;
+  font-size: 15px;
   color: var(--bcc-color-text-muted);
   white-space: nowrap;
 }
@@ -152,9 +172,9 @@
 .dayview-timeline-time {
   margin-top: 2px;
   font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--bcc-color-text-muted);
-  opacity: 0.7;
+  opacity: 0.8;
   white-space: nowrap;
 }
 
@@ -181,6 +201,60 @@
   letter-spacing: -0.16px;
   color: var(--bcc-color-text-muted);
   margin: 0;
+}
+
+/* Digest : les points à regarder aujourd'hui (docs/ipc/digest.md), dans une seule carte calme sous le titre. */
+.dayview-digest {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 4px 18px;
+  width: 100%;
+  max-width: 520px;
+  box-sizing: border-box;
+  background: var(--bcc-color-surface);
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-card);
+  text-align: left;
+}
+
+.dayview-digest li + li {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.dayview-digest-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 0;
+  border: none;
+  background: none;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  color: var(--bcc-color-text);
+  cursor: pointer;
+}
+
+.dayview-digest-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+}
+
+.dayview-digest-detail {
+  display: block;
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--bcc-color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dayview-digest-chevron {
+  flex-shrink: 0;
+  color: var(--bcc-color-text-muted);
 }
 
 .dayview-notification {

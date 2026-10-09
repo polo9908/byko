@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { guessJiraDomain } from "@shared/jira"
 import type { JiraConnectionStatus, JiraProjectSummary } from "@shared/jira"
 import OnboardingHeader from "./OnboardingHeader"
@@ -30,6 +30,37 @@ function ConnectJiraStep({ email, onBack, onContinue }: ConnectJiraStepProps): R
   const [projects, setProjects] = useState<JiraProjectSummary[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState("")
   const [error, setError] = useState<string | null>(null)
+
+  // Jira déjà connecté (jeton conservé chiffré) : on le reprend sans redemander domaine ni jeton, mais seulement
+  // une fois Jira réellement joint (liste des projets). Sinon l'erreur est affichée et le formulaire reste disponible.
+  useEffect(() => {
+    let cancelled = false
+    async function resume(): Promise<void> {
+      try {
+        const existing = await window.api.jira.getStatus()
+        if (cancelled || !existing.connected) return
+        if (existing.domain) setDomain(existing.domain)
+        try {
+          const projectList = await window.api.jira.listProjects()
+          if (cancelled) return
+          setStatus(existing)
+          setPhase("connected")
+          setProjects(projectList)
+          setSelectedProjectId(projectList[0]?.id ?? "")
+        } catch (err) {
+          if (!cancelled) {
+            setError(`Jira est enregistré mais ne répond pas : ${cleanIpcErrorMessage(err)} Reconnectez-le avec un nouveau jeton.`)
+          }
+        }
+      } catch (err) {
+        if (!cancelled) setError(`Impossible de lire la connexion Jira enregistrée : ${cleanIpcErrorMessage(err)}`)
+      }
+    }
+    void resume()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   async function handleCreateToken(): Promise<void> {
     await window.api.jira.openTokenPage()

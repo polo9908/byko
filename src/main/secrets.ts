@@ -1,6 +1,7 @@
-import { app, safeStorage } from "electron"
+import { safeStorage } from "electron"
 import { mkdir, readFile, writeFile } from "fs/promises"
 import { dirname, join } from "path"
+import { accountDataPath, accountDir } from "./accountPaths"
 
 /**
  * Stockage chiffré des jetons/clés API (Jira, Anthropic, Figma, ...).
@@ -17,8 +18,9 @@ import { dirname, join } from "path"
 
 type SecretStore = Record<string, string>
 
+/** Secrets du compte actif (voir accountPaths.ts) : chaque compte a son propre fichier chiffré. */
 function secretsFilePath(): string {
-  return join(app.getPath("userData"), "secrets.json")
+  return accountDataPath("secrets.json")
 }
 
 async function readStore(): Promise<SecretStore> {
@@ -93,4 +95,25 @@ export async function deleteSecret(key: string): Promise<void> {
     delete store[key]
     await writeStore(store)
   }
+}
+
+async function readStoreAt(accountId: string): Promise<SecretStore> {
+  try {
+    return JSON.parse(await readFile(join(accountDir(accountId), "secrets.json"), "utf-8")) as SecretStore
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {}
+    throw error
+  }
+}
+
+/** Noms des secrets d'un compte (jamais les valeurs) : sert à lister ses connexions dans le sélecteur de comptes. */
+export async function listSecretKeysAt(accountId: string): Promise<string[]> {
+  return Object.keys(await readStoreAt(accountId))
+}
+
+/** Lit un secret d'un compte précis (pas forcément l'actif), pour afficher son e-mail dans le sélecteur. */
+export async function readSecretAt(accountId: string, key: string): Promise<string | undefined> {
+  const cipher = (await readStoreAt(accountId))[key]
+  if (cipher === undefined || !isEncryptionAvailable()) return undefined
+  return safeStorage.decryptString(Buffer.from(cipher, "base64"))
 }

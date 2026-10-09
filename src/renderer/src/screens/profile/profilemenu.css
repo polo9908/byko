@@ -1,0 +1,225 @@
+/* Encart de profil (haut à droite). Mêmes pilules, rayons, ombres et typographie que l'en-tête de la vue journée et des Réglages. */
+
+.profile-menu {
+  position: relative;
+}
+
+.profile-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 10px 0 4px;
+  border: none;
+  border-radius: 18px;
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--bcc-color-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-trigger:hover {
+  background: rgba(0, 0, 0, 0.11);
+}
+
+.profile-trigger:focus-visible,
+.profile-account:focus-visible,
+.profile-action:focus-visible {
+  outline: 2px solid var(--bcc-color-accent);
+  outline-offset: 2px;
+}
+
+.profile-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--bcc-color-text);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.profile-identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.profile-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-email {
+  font-size: 12px;
+  color: var(--bcc-color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-trigger .profile-identity {
+  max-width: 190px;
+}
+
+.profile-chevron {
+  color: var(--bcc-color-text-muted);
+  font-size: 15px;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.profile-chevron--open {
+  transform: rotate(-90deg);
+}
+
+.profile-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 200;
+  width: 320px;
+  padding: 8px 0;
+  background: var(--bcc-color-surface);
+  border-radius: var(--bcc-radius-card);
+  box-shadow: 0 24px 64px rgba(29, 29, 31, 0.25);
+  animation: profile-pop 0.16s ease;
+}
+
+@keyframes profile-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
+.profile-panel-label {
+  margin: 0;
+  padding: 10px 16px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bcc-color-text-muted);
+}
+
+.profile-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: var(--bcc-color-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.profile-account:hover:not(:disabled) {
+  background: var(--bcc-color-bg);
+}
+
+.profile-account:disabled,
+.profile-action:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.profile-account--active {
+  cursor: default;
+}
+
+.profile-account .profile-avatar {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+}
+
+.profile-account .profile-name {
+  font-size: 14px;
+}
+
+.profile-connectors {
+  font-size: 12px;
+  color: var(--bcc-color-text-muted);
+}
+
+.profile-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--bcc-color-success);
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.profile-divider {
+  height: 1px;
+  margin: 8px 0;
+  background: var(--bcc-color-border);
+}
+
+.profile-action {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: var(--bcc-color-text);
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profile-action:hover:not(:disabled) {
+  background: var(--bcc-color-bg);
+}
+
+.profile-action-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bcc-color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.profile-error {
+  margin: 4px 16px 8px;
+  font-size: 13px;
+  color: var(--bcc-color-danger);
+}
+
+/* Écrans sans en-tête (Point d'équipe, Journal) : barre flottante en haut à droite. */
+.global-topbar {
+  position: fixed;
+  top: 20px;
+  right: 40px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.global-topbar .global-journal-button {
+  height: 36px;
+  padding: 0 14px;
+  border-radius: 18px;
+}

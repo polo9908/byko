@@ -1,0 +1,54 @@
+/* Préférences d'accessibilité : attributs posés sur <html> par lib/accessibility.ts.
+   Palettes et contraste : variables et filtre posés en style inline par ce même module. */
+
+/* Inversion : les images et vidéos gardent leurs couleurs d'origine. */
+html[data-a11y-palette="invert"] img,
+html[data-a11y-palette="invert"] video {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+/* Texte en gras. */
+html[data-a11y-bold] body,
+html[data-a11y-bold] button,
+html[data-a11y-bold] input,
+html[data-a11y-bold] textarea {
+  font-weight: 600;
+}
+
+/* Lettres et mots plus espacés : aide à la lecture (dyslexie, basse vision). */
+html[data-a11y-spacing] body,
+html[data-a11y-spacing] button,
+html[data-a11y-spacing] input,
+html[data-a11y-spacing] textarea {
+  letter-spacing: 0.03em;
+  word-spacing: 0.12em;
+}
+
+/* Réduire la transparence : plus de flou d'arrière-plan ni de verre. */
+html[data-a11y-transparency] *,
+html[data-a11y-transparency] *::before,
+html[data-a11y-transparency] *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-a11y-motion] *,
+html[data-a11y-motion] *::before,
+html[data-a11y-motion] *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
+}
+
+html[data-a11y-focus] *:focus-visible {
+  outline: 3px solid #000 !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 6px #ffd400 !important;
+}
+
+/* Grandes cibles (tremblements, motricité fine) : zones de clic d'au moins 44 px. */
+html[data-a11y-targets] :where(button, [role="button"], select, summary):not(.settings-switch, .dayview-timeline-milestone) {
+  min-height: 44px;
+  min-width: 44px;
+}

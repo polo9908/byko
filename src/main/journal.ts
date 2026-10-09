@@ -1,5 +1,5 @@
-import { app } from "electron"
-import { mkdir, readFile, writeFile } from "fs/promises"
+import { accountDataPath } from "./accountPaths"
+import { mkdir, readFile, rename, unlink, writeFile } from "fs/promises"
 import { dirname, join } from "path"
 import { randomUUID } from "crypto"
 import type { JournalEntry, JournalEntryMode, JournalUndo } from "../shared/journal"
@@ -14,7 +14,7 @@ import type { JournalEntry, JournalEntryMode, JournalUndo } from "../shared/jour
  */
 
 function journalFilePath(): string {
-  return join(app.getPath("userData"), "journal.json")
+  return accountDataPath("journal.json")
 }
 
 async function readEntries(): Promise<JournalEntry[]> {
@@ -29,8 +29,29 @@ async function readEntries(): Promise<JournalEntry[]> {
 
 async function writeEntries(entries: JournalEntry[]): Promise<void> {
   const file = journalFilePath()
-  await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, JSON.stringify(entries))
+  const dir = dirname(file)
+  // Fichier temporaire puis `rename` : un arrêt en pleine écriture ne laisse jamais un JSON tronqué.
+  const tmp = join(dir, `journal.json.${randomUUID()}.tmp`)
+  await mkdir(dir, { recursive: true })
+  try {
+    await writeFile(tmp, JSON.stringify(entries))
+    await rename(tmp, file)
+  } catch (error) {
+    await unlink(tmp).catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * Chaque lire-modifier-écrire passe par cette file : la relève des liens (linkSync.ts) écrit en arrière-plan, et deux
+ * ajouts simultanés ne doivent pas s'écraser (une entrée perdue, c'est une action qui n'est plus annulable).
+ */
+let queue: Promise<unknown> = Promise.resolve()
+
+function serialized<T>(run: () => Promise<T>): Promise<T> {
+  const result = queue.then(run, run)
+  queue = result.catch(() => undefined)
+  return result
 }
 
 export async function listToday(): Promise<JournalEntry[]> {
@@ -75,12 +96,14 @@ export async function getEntry(id: string): Promise<JournalEntry | undefined> {
   return entries.find((entry) => entry.id === id)
 }
 
-export async function removeEntry(id: string): Promise<void> {
-  const entries = await readEntries()
-  await writeEntries(entries.filter((entry) => entry.id !== id))
+export function removeEntry(id: string): Promise<void> {
+  return serialized(async () => {
+    const entries = await readEntries()
+    await writeEntries(entries.filter((entry) => entry.id !== id))
+  })
 }
 
-export async function addEntry(
+export function addEntry(
   title: string,
   mode: JournalEntryMode,
   options: { undo?: JournalUndo; url?: string } = {},
@@ -93,8 +116,10 @@ export async function addEntry(
     undo: options.undo,
     url: options.url,
   }
-  const entries = await readEntries()
-  entries.push(entry)
-  await writeEntries(entries)
-  return entry
+  return serialized(async () => {
+    const entries = await readEntries()
+    entries.push(entry)
+    await writeEntries(entries)
+    return entry
+  })
 }

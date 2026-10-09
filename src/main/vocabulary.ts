@@ -1,4 +1,4 @@
-import { app } from "electron"
+import { accountDataPath } from "./accountPaths"
 import { mkdir, readFile, rename, unlink, writeFile } from "fs/promises"
 import { dirname, join } from "path"
 import { randomUUID } from "crypto"
@@ -21,7 +21,7 @@ const FILE_NAME = "personal-vocabulary.json"
 const KINDS: readonly AssistantSuggestionKind[] = ["ticket", "journal", "decision"]
 
 function vocabularyFilePath(): string {
-  return join(app.getPath("userData"), FILE_NAME)
+  return accountDataPath(FILE_NAME)
 }
 
 function errorCode(error: unknown): string {

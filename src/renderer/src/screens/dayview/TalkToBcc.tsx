@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState } from "react"
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { isSilent, startVoiceRecording } from "@renderer/lib/voiceRecorder"
 import type { VoiceRecording } from "@renderer/lib/voiceRecorder"
 import { playSfx } from "@renderer/lib/sound"
+import { enter, heartbeat, pop, stagger } from "@renderer/lib/motion"
 import { completeTyped, GHOST_MIN_CHARS } from "@renderer/lib/completion"
 import { ASSISTANT_SUGGEST_MIN_CHARS } from "@shared/assistant"
 import type { AssistantAnswer, AssistantSuggestion, AssistantSuggestionKind } from "@shared/assistant"
@@ -85,6 +86,32 @@ function TalkToBcc(): React.JSX.Element {
   const ticketRowsRef = useRef<(HTMLAnchorElement | null)[]>([])
   const suggestRequestRef = useRef(0)
   const suggestListId = useId()
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  // Mouvement de chaque état du panneau (voir `lib/motion.ts`) : il arrive en ressort, le point
+  // « Je vous écoute » bat comme un cœur, la réponse et ses tickets entrent en cascade.
+  useLayoutEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    const all = (selector: string): HTMLElement[] => Array.from(root.querySelectorAll<HTMLElement>(selector))
+    if (phase === "idle") {
+      stagger(all(".dayview-talk-idle-actions > *, .dayview-talk-kbd-hint"), 50)
+      return
+    }
+    if (phase === "listening") {
+      stagger(all(".dayview-talk-status, .dayview-talk-echo, .dayview-talk-listen-actions, .dayview-talk-kbd-hint"), 50)
+      const stops = all(".dayview-talk-live-dot").map((dot) => heartbeat(dot))
+      return () => stops.forEach((stop) => stop())
+    }
+    if (phase === "answered") {
+      const answerText = root.querySelector<HTMLElement>(".dayview-talk-answer")
+      if (answerText) enter(answerText, 0)
+      stagger(all(".dayview-talk-tickets .journal-ticket-row, .dayview-talk-recall-hint"), 55, 90)
+      return
+    }
+    stagger(all(".dayview-talk-status, .dayview-talk-input-group"), 50)
+    return undefined
+  }, [phase])
 
   useEffect(() => {
     // Préchargement du modèle (téléchargé une seule fois) pour que la première transcription soit rapide.
@@ -143,6 +170,12 @@ function TalkToBcc(): React.JSX.Element {
     suggestOpen &&
     liveSuggestions.length > 0 &&
     typedText.trim().length >= ASSISTANT_SUGGEST_MIN_CHARS
+
+  // La liste de suggestions éclot quand elle apparaît.
+  useLayoutEffect(() => {
+    const list = rootRef.current?.querySelector<HTMLElement>(".dayview-talk-suggest")
+    if (suggestVisible && list) pop(list, 0, 0.96)
+  }, [suggestVisible])
 
   // Complétion fantôme : proposée seulement quand la liste de suggestions ne prend pas déjà l'écran.
   const ghost =
@@ -326,6 +359,8 @@ function TalkToBcc(): React.JSX.Element {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
+      // Écran rendu inerte par une fenêtre modale (voir DayView) : les raccourcis ne partent pas derrière elle.
+      if (rootRef.current?.closest("[inert]")) return
       if (phase === "answered" || phase === "error") {
         if (!isEditableTarget(event.target)) handleAnsweredKey(event)
         return
@@ -411,7 +446,7 @@ function TalkToBcc(): React.JSX.Element {
 
   if (phase === "idle") {
     return (
-      <div className="dayview-talk-idle">
+      <div className="dayview-talk-idle" ref={rootRef}>
         <div className="dayview-talk-idle-actions">
           <button
             type="button"
@@ -442,7 +477,7 @@ function TalkToBcc(): React.JSX.Element {
   }
 
   return (
-    <div className="dayview-talk-panel">
+    <div className="dayview-talk-panel" ref={rootRef}>
       {phase === "listening" && (
         <>
           <p className="dayview-talk-status">

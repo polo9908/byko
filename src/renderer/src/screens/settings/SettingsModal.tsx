@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import type { ConnectorSummary, ConnectableConnectorId, UpcomingConnectorId } from "@shared/connectors"
 import { AI_PROVIDERS } from "@shared/ai"
 import type { AIProviderId } from "@shared/ai"
@@ -6,15 +6,26 @@ import type { GoogleCalendarCredentialsStatus } from "@shared/googleCalendar"
 import type { PrivacySettings } from "@shared/privacy"
 import { cleanIpcErrorMessage } from "../../lib/ipcError"
 import { playSfx } from "@renderer/lib/sound"
+import { prefersReducedMotion, spring, SPRINGS } from "@renderer/lib/motion"
+import { useSwitchSpring } from "@renderer/lib/useMotion"
 import GoogleCalendarSetupWizard from "./GoogleCalendarSetupWizard"
 import JiraSetupWizard from "./JiraSetupWizard"
 import FigmaSetupWizard from "./FigmaSetupWizard"
+import GithubSetupWizard, { GithubDetail } from "./GithubSetupWizard"
+import TicketLinksSettings from "./TicketLinksSettings"
 import AiSetupWizard from "./AiSetupWizard"
 import UpcomingConnectorGuide from "./ConnectorGuides"
+import AiEnabledSection from "./AiEnabledSection"
+import AccessibilitySection from "./AccessibilitySection"
+import VocabularySection from "./VocabularySection"
+import AccountList from "./AccountList"
+import RoleSection from "./RoleSection"
 import "./settings.css"
 
 interface SettingsModalProps {
   onClose: () => void
+  /** Section affichée à l'ouverture (ex. clic sur une notification de test). */
+  initialSection?: SettingsSectionId
 }
 
 interface UnimplementedRow {
@@ -25,12 +36,78 @@ interface UnimplementedRow {
   subtitle: string
 }
 
-/** Sources sans backend réel pour l'instant (voir docs/backlog : E3 Slack, D2 Teams/Outlook/GitHub). */
+export type SettingsSectionId = "accounts" | "connectors" | "ai" | "vocabulary" | "accessibility"
+
+const SVG_PROPS = {
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.8,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
+} as const
+
+const SETTINGS_SECTIONS: { id: SettingsSectionId; label: string; navLabel: string; icon: React.JSX.Element }[] = [
+  {
+    id: "accounts",
+    label: "Comptes",
+    navLabel: "Comptes",
+    icon: (
+      <svg {...SVG_PROPS}>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" />
+      </svg>
+    ),
+  },
+  {
+    id: "connectors",
+    label: "Connecteurs",
+    navLabel: "Connecteurs",
+    icon: (
+      <svg {...SVG_PROPS}>
+        <path d="M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0V8zM12 18v4" />
+      </svg>
+    ),
+  },
+  {
+    id: "ai",
+    label: "Intelligence artificielle",
+    navLabel: "IA",
+    icon: (
+      <svg {...SVG_PROPS}>
+        <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8L19 16z" />
+      </svg>
+    ),
+  },
+  {
+    id: "vocabulary",
+    label: "Vocabulaire des réunions",
+    navLabel: "Vocabulaire",
+    icon: (
+      <svg {...SVG_PROPS}>
+        <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5zM4 19a2 2 0 0 1 2-2h13M9 8h6M9 12h4" />
+      </svg>
+    ),
+  },
+  {
+    id: "accessibility",
+    label: "Accessibilité",
+    navLabel: "Accessibilité",
+    icon: (
+      <svg {...SVG_PROPS}>
+        <circle cx="12" cy="4.5" r="1.8" />
+        <path d="M5 8.5l7 1.5 7-1.5M12 10v5m0 0l-3 6m3-6l3 6" />
+      </svg>
+    ),
+  },
+]
+
+/** Sources sans backend réel pour l'instant (voir docs/backlog : E3 Slack, D2 Teams/Outlook). */
 const UNIMPLEMENTED_ROWS: UnimplementedRow[] = [
   { id: "slack", letter: "S", color: "#611F69", name: "Slack", subtitle: "Fils de discussion et notifications" },
   { id: "teams", letter: "T", color: "#5B5FC7", name: "Microsoft Teams", subtitle: "Réunions et messages" },
   { id: "outlook", letter: "O", color: "#0364B8", name: "Outlook", subtitle: "Agenda et e-mails" },
-  { id: "github", letter: "G", color: "#1E1E1E", name: "GitHub", subtitle: "Pull requests liées aux tickets" },
 ]
 
 /** Détail Jira (ticket D2) : rotation du jeton inline, fidèle au prototype (pas de déconnexion pour les connecteurs à jeton). */
@@ -410,6 +487,8 @@ function PrivacySection(): React.JSX.Element {
   }
 
   const checked = settings?.shareRecentActivityWithAi ?? false
+  // Le pouce glisse en ressort et s'étire sous la vitesse ; la piste change de couleur avec lui.
+  useSwitchSpring(switchRef, checked, settings !== null)
 
   return (
     <>
@@ -562,12 +641,16 @@ function ShortcutsSection(): React.JSX.Element {
   )
 }
 
-function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
+function SettingsModal({ onClose, initialSection = "connectors" }: SettingsModalProps): React.JSX.Element {
+  const overlayRef = useRef<HTMLDivElement>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
+  const closingRef = useRef(false)
   const [connectors, setConnectors] = useState<ConnectorSummary[] | null>(null)
   const [encryptionAvailable, setEncryptionAvailable] = useState<boolean | null>(null)
   const [version, setVersion] = useState("")
+  const [section, setSection] = useState<SettingsSectionId>(initialSection)
   const [expandedId, setExpandedId] = useState<ConnectorSummary["id"] | null>(null)
-  // Connecteur dont l'assistant de connexion est ouvert dans la modale (Jira, IA, Figma, ou Google Agenda).
+  // Connecteur dont l'assistant de connexion est ouvert dans la modale (Jira, IA, Figma, GitHub, ou Google Agenda).
   const [wizardId, setWizardId] = useState<ConnectableConnectorId | null>(null)
   // Connecteur sans backend dont le guide « Voir comment faire » est déplié.
   const [upcomingGuideId, setUpcomingGuideId] = useState<UpcomingConnectorId | null>(null)
@@ -580,6 +663,53 @@ function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
   // Lu au niveau de la modale pour signaler la migration E4bis sur la rangée repliée.
   const [calendarCredentials, setCalendarCredentials] = useState<GoogleCalendarCredentialsStatus | null>(null)
   const [calendarCredentialsError, setCalendarCredentialsError] = useState<string | null>(null)
+
+  // Le bouton qui a ouvert la modale est rendu inerte pendant qu'elle est ouverte : on lui rend le focus à la fermeture.
+  useEffect(() => {
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    return () => {
+      // Après le commit qui retire `inert`, sinon le focus est refusé.
+      requestAnimationFrame(() => {
+        if (opener?.isConnected) opener.focus()
+      })
+    }
+  }, [])
+
+  // Ouverture : le voile s'assombrit, la fenêtre éclot (ressort rebondissant).
+  useLayoutEffect(() => {
+    const overlay = overlayRef.current
+    const modal = modalRef.current
+    if (!overlay || !modal || prefersReducedMotion()) return
+    overlay.style.opacity = "0"
+    modal.style.scale = "0.93"
+    modal.style.translate = "0 10px"
+    const fade = spring(0, 1, SPRINGS.snappy, (p) => (overlay.style.opacity = p === 1 ? "" : String(Math.min(1, p))))
+    const grow = spring(0, 1, SPRINGS.bouncy, (p) => {
+      modal.style.scale = p === 1 ? "" : (0.93 + p * 0.07).toFixed(4)
+      modal.style.translate = p === 1 ? "" : `0 ${((1 - p) * 10).toFixed(1)}px`
+    })
+    return () => {
+      fade.stop()
+      grow.stop()
+    }
+  }, [])
+
+  /** Fermeture : la fenêtre se resserre et le voile s'efface, puis la modale est démontée. */
+  function requestClose(): void {
+    const overlay = overlayRef.current
+    const modal = modalRef.current
+    if (closingRef.current) return
+    closingRef.current = true
+    if (!overlay || !modal || prefersReducedMotion()) {
+      onClose()
+      return
+    }
+    spring(1, 0, SPRINGS.snappy, (p) => (overlay.style.opacity = String(Math.max(0, p))))
+    spring(1, 0.93, SPRINGS.snappy, (p, v) => {
+      modal.style.scale = p.toFixed(4)
+      if (v === 0) onClose()
+    })
+  }
 
   function refreshConnectors(): void {
     window.api.settings.listConnectors().then(setConnectors)
@@ -662,6 +792,7 @@ function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
     ai: () => setWizardId("ai"),
     figma: () => setWizardId("figma"),
     calendar: () => void handleConnectCalendar(),
+    github: () => setWizardId("github"),
   }
 
   const connectedRows = connectors?.filter((row) => row.connected) ?? []
@@ -674,6 +805,7 @@ function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
     }
     if (id === "jira") return <JiraDetail onRotated={onRotated} />
     if (id === "figma") return <FigmaDetail onRotated={onRotated} />
+    if (id === "github") return <GithubDetail onRotated={onRotated} />
     if (id === "ai") return <AiDetail onRotated={onRotated} />
     if (id === "calendar")
       return (
@@ -692,6 +824,7 @@ function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
     if (id === "jira") return <JiraSetupWizard onConnected={handleWizardConnected} onCancel={onCancel} />
     if (id === "figma") return <FigmaSetupWizard onConnected={handleWizardConnected} onCancel={onCancel} />
     if (id === "ai") return <AiSetupWizard onConnected={handleWizardConnected} onCancel={onCancel} />
+    if (id === "github") return <GithubSetupWizard onConnected={handleWizardConnected} onCancel={onCancel} />
     return <GoogleCalendarSetupWizard onConnected={handleWizardConnected} onCancel={onCancel} />
   }
 
@@ -788,36 +921,95 @@ function SettingsModal({ onClose }: SettingsModalProps): React.JSX.Element {
     )
   }
 
+  const activeSection = SETTINGS_SECTIONS.find((entry) => entry.id === section) ?? SETTINGS_SECTIONS[0]
+
   return (
-    <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-modal" onClick={(event) => event.stopPropagation()}>
-        <div className="settings-header">
-          <h2 className="settings-title">Réglages</h2>
-          <button type="button" className="settings-close" onClick={onClose} aria-label="Fermer">
-            ✕
-          </button>
-        </div>
+    <div className="settings-overlay" ref={overlayRef} onClick={requestClose}>
+      <div
+        className="settings-modal"
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <nav className="settings-sidebar" aria-label="Sections des réglages">
+          <h2 className="settings-title" id="settings-title">
+            Réglages
+          </h2>
+          {SETTINGS_SECTIONS.map((entry) => (
+            <button
+              key={entry.id}
+              type="button"
+              className="settings-nav"
+              aria-label={entry.label}
+              title={entry.label}
+              aria-current={entry.id === section ? "page" : undefined}
+              onClick={() => setSection(entry.id)}
+            >
+              {entry.icon}
+              <span className="settings-nav-label">{entry.navLabel}</span>
+              {entry.id === "connectors" && connectedRows.length > 0 && (
+                <span className="settings-nav-badge">{connectedRows.length}</span>
+              )}
+            </button>
+          ))}
+          <div className="settings-sidebar-foot">
+            <span className="settings-footer-lock">
+              🔒 {encryptionAvailable ? "Clés chiffrées sur cet appareil" : "Chiffrement indisponible sur cet appareil"}
+            </span>
+            <span>BCC {version}</span>
+          </div>
+        </nav>
 
-        {connectedRows.length > 0 && (
-          <>
-            <p className="settings-section-label">Connecté</p>
-            {connectedRows.map(renderConnectorRow)}
-          </>
-        )}
+        <div className="settings-main">
+          <div className="settings-header">
+            <h3 className="settings-section-title">{activeSection.label}</h3>
+            <button type="button" className="settings-close" onClick={requestClose} aria-label="Fermer">
+              ✕
+            </button>
+          </div>
 
-        <p className="settings-section-label">Ajouter une source</p>
-        {disconnectedRows.map(renderConnectorRow)}
-        {UNIMPLEMENTED_ROWS.map(renderUnimplementedRow)}
+          <div className="settings-panel" key={section}>
+            {section === "accounts" && (
+              <>
+                <RoleSection />
+                <AccountList showSignOut />
+              </>
+            )}
 
-        <PrivacySection />
+            {section === "connectors" && (
+              <>
+                {connectedRows.length > 0 && (
+                  <>
+                    <p className="settings-section-label">Connecté</p>
+                    {connectedRows.map(renderConnectorRow)}
+                  </>
+                )}
 
-        <ShortcutsSection />
+                <p className="settings-section-label">Ajouter une source</p>
+                {disconnectedRows.map(renderConnectorRow)}
+                {UNIMPLEMENTED_ROWS.map(renderUnimplementedRow)}
 
-        <div className="settings-footer">
-          <span className="settings-footer-lock">
-            🔒 {encryptionAvailable ? "Clés chiffrées sur cet appareil" : "Chiffrement indisponible sur cet appareil"}
-          </span>
-          <span>BCC {version}</span>
+                <TicketLinksSettings
+                  githubConnected={connectedRows.some((row) => row.id === "github")}
+                  figmaConnected={connectedRows.some((row) => row.id === "figma")}
+                />
+              </>
+            )}
+
+            {section === "ai" && (
+              <>
+                <AiEnabledSection />
+                <PrivacySection />
+                <ShortcutsSection />
+              </>
+            )}
+
+            {section === "vocabulary" && <VocabularySection />}
+
+            {section === "accessibility" && <AccessibilitySection />}
+          </div>
         </div>
       </div>
     </div>

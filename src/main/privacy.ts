@@ -1,4 +1,4 @@
-import { app } from "electron"
+import { accountDataPath } from "./accountPaths"
 import { mkdir, readFile, rename, unlink, writeFile } from "fs/promises"
 import { dirname, join } from "path"
 import { randomUUID } from "crypto"
@@ -15,10 +15,10 @@ import type { PrivacySettings } from "../shared/privacy"
  */
 
 const FILE_NAME = "privacy.json"
-const FAIL_CLOSED: PrivacySettings = { shareRecentActivityWithAi: false }
+const FAIL_CLOSED: PrivacySettings = { shareRecentActivityWithAi: false, aiEnabled: false }
 
 function privacyFilePath(): string {
-  return join(app.getPath("userData"), FILE_NAME)
+  return accountDataPath(FILE_NAME)
 }
 
 function errorCode(error: unknown): string {
@@ -44,7 +44,7 @@ async function readSettings(): Promise<PrivacySettings> {
       lastWarning = null
       return { ...PRIVACY_DEFAULTS }
     }
-    warnOnce(`réglage illisible (code ${errorCode(error)}) ; partage désactivé.`)
+    warnOnce(`réglage illisible (code ${errorCode(error)}) ; partage et IA désactivés.`)
     return { ...FAIL_CLOSED }
   }
 
@@ -52,19 +52,24 @@ async function readSettings(): Promise<PrivacySettings> {
   try {
     parsed = JSON.parse(raw)
   } catch {
-    warnOnce("réglage invalide (JSON mal formé) ; partage désactivé.")
+    warnOnce("réglage invalide (JSON mal formé) ; partage et IA désactivés.")
     return { ...FAIL_CLOSED }
   }
-  const value =
-    typeof parsed === "object" && parsed !== null
-      ? (parsed as Record<string, unknown>).shareRecentActivityWithAi
-      : undefined
-  if (typeof value !== "boolean") {
-    warnOnce("réglage invalide (shareRecentActivityWithAi non booléen) ; partage désactivé.")
+  const record =
+    typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {}
+  const share = record.shareRecentActivityWithAi
+  if (typeof share !== "boolean") {
+    warnOnce("réglage invalide (shareRecentActivityWithAi non booléen) ; partage et IA désactivés.")
+    return { ...FAIL_CLOSED }
+  }
+  // Absent : fichier écrit avant l'ajout de l'interrupteur, on garde le défaut. Présent mais non booléen : fail-closed.
+  const aiEnabled = record.aiEnabled
+  if (aiEnabled !== undefined && typeof aiEnabled !== "boolean") {
+    warnOnce("réglage invalide (aiEnabled non booléen) ; partage et IA désactivés.")
     return { ...FAIL_CLOSED }
   }
   lastWarning = null
-  return { shareRecentActivityWithAi: value }
+  return { shareRecentActivityWithAi: share, aiEnabled: aiEnabled ?? PRIVACY_DEFAULTS.aiEnabled }
 }
 
 /** Fichier temporaire dans le même dossier puis `rename` : un arrêt en pleine écriture ne laisse jamais un JSON tronqué. */
@@ -100,7 +105,17 @@ export function getSettings(): Promise<PrivacySettings> {
 /** `enabled` est supposé déjà validé (booléen strict) par l'appelant IPC. Renvoie l'état relu après écriture. */
 export function setShareRecentActivity(enabled: boolean): Promise<PrivacySettings> {
   return serialized(async () => {
-    await writeSettings({ shareRecentActivityWithAi: enabled })
+    const current = await readSettings()
+    await writeSettings({ ...current, shareRecentActivityWithAi: enabled })
+    return readSettings()
+  })
+}
+
+/** `enabled` est supposé déjà validé (booléen strict) par l'appelant IPC. Renvoie l'état relu après écriture. */
+export function setAiEnabled(enabled: boolean): Promise<PrivacySettings> {
+  return serialized(async () => {
+    const current = await readSettings()
+    await writeSettings({ ...current, aiEnabled: enabled })
     return readSettings()
   })
 }

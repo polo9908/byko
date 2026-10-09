@@ -534,6 +534,88 @@ async function getValidAccessToken(): Promise<string> {
   return updated.accessToken
 }
 
+const MAX_LOCATION_CHARS = 200
+const MAX_URL_CHARS = 2000
+/** Dans la description (HTML libre, rédigée par l'organisateur), on ne retient que les liens de visio connus. */
+const MEETING_HOSTS = /(^|\.)(zoom\.us|zoomgov\.com|teams\.microsoft\.com|teams\.live\.com|meet\.google\.com|webex\.com|whereby\.com|gotomeet\.me|gotomeeting\.com|around\.co|meet\.jit\.si|bluejeans\.com)$/i
+
+/** Une invitation est une donnée externe : on n'en garde que du https, sans identifiants, de longueur raisonnable. */
+function toHttpsUrl(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || raw.length > MAX_URL_CHARS) return undefined
+  try {
+    const url = new URL(raw.trim())
+    if (url.protocol !== "https:" || url.username || url.password) return undefined
+    return url.href
+  } catch {
+    return undefined
+  }
+}
+
+function firstUrlIn(text: string, onlyKnownHosts: boolean): string | undefined {
+  for (const match of text.matchAll(/https:\/\/[^\s"'<>)\]]+/gi)) {
+    const url = toHttpsUrl(match[0])
+    if (!url) continue
+    if (!onlyKnownHosts || MEETING_HOSTS.test(new URL(url).hostname)) return url
+  }
+  return undefined
+}
+
+interface EventLocationFields {
+  location?: string
+  hangoutLink?: string
+  description?: string
+  conferenceData?: { entryPoints?: Array<{ entryPointType?: string; uri?: string }> }
+}
+
+function placeAndLink(event: EventLocationFields): { location?: string; meetingUrl?: string } {
+  const video = event.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video")
+  const location = typeof event.location === "string" ? event.location.trim() : ""
+  const meetingUrl =
+    toHttpsUrl(video?.uri) ??
+    toHttpsUrl(event.hangoutLink) ??
+    firstUrlIn(location, false) ??
+    (typeof event.description === "string" ? firstUrlIn(event.description, true) : undefined)
+  // Le champ « Lieu » ne garde que le texte : le lien, déjà extrait, n'a pas à s'y répéter.
+  const place = location.replace(/https?:\/\/\S+/gi, "").replace(/\s+/g, " ").replace(/^[\s,;:–-]+|[\s,;:–-]+$/g, "")
+  return { location: place ? place.slice(0, MAX_LOCATION_CHARS) : undefined, meetingUrl }
+}
+
+const MAX_ATTENDEES = 30
+const MAX_ATTENDEE_NAME_CHARS = 60
+
+interface RawAttendee {
+  email?: string
+  displayName?: string
+  responseStatus?: string
+  resource?: boolean
+}
+
+/** « paul.lavergne99@x.fr » → « Paul Lavergne » ; ce qui ne ressemble pas à un nom est écarté. */
+function nameFromEmail(email: string): string {
+  const local = email.split("@")[0] ?? ""
+  return local
+    .split(/[._\-+]+/)
+    .map((part) => part.replace(/\d+/g, ""))
+    .filter((part) => part.length > 0)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ")
+}
+
+/** Les invités sont une donnée externe : on n'en garde que des noms courts, sans doublon, pas les salles ni les refus. */
+function presentAttendees(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const names: string[] = []
+  for (const entry of raw as RawAttendee[]) {
+    if (!entry || typeof entry !== "object" || entry.resource || entry.responseStatus === "declined") continue
+    const display = typeof entry.displayName === "string" ? entry.displayName.trim() : ""
+    const name = (display || (typeof entry.email === "string" ? nameFromEmail(entry.email) : "")).slice(0, MAX_ATTENDEE_NAME_CHARS)
+    if (!/\p{L}/u.test(name) || names.some((known) => known.toLowerCase() === name.toLowerCase())) continue
+    names.push(name)
+    if (names.length >= MAX_ATTENDEES) break
+  }
+  return names.length > 0 ? names : undefined
+}
+
 export async function listTodayEvents(): Promise<CalendarEventSummary[]> {
   const accessToken = await getValidAccessToken()
   const now = new Date()
@@ -556,6 +638,11 @@ export async function listTodayEvents(): Promise<CalendarEventSummary[]> {
       summary?: string
       start: { date?: string; dateTime?: string }
       end: { date?: string; dateTime?: string }
+      location?: string
+      hangoutLink?: string
+      description?: string
+      attendees?: unknown
+      conferenceData?: { entryPoints?: Array<{ entryPointType?: string; uri?: string }> }
     }>
   }
   return body.items.map((event) => ({
@@ -564,5 +651,7 @@ export async function listTodayEvents(): Promise<CalendarEventSummary[]> {
     start: event.start.dateTime ?? event.start.date ?? "",
     end: event.end.dateTime ?? event.end.date ?? "",
     allDay: !event.start.dateTime,
+    ...placeAndLink(event),
+    attendees: presentAttendees(event.attendees),
   }))
 }

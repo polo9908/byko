@@ -10,17 +10,39 @@ export interface MeetingItemDraft {
   text: string
 }
 
+/**
+ * Pourquoi la réunion revient sur un item déjà noté :
+ * - `cancelled` : abandonné pour de bon (« on annule », « on n'en parle plus ») — jamais reproposé ;
+ * - `replaced` : remplacé ou absorbé (regroupement, correction, reformulation) — le sujet reste vivant,
+ *   un autre item peut le porter.
+ */
+export type MeetingRemovalReason = "cancelled" | "replaced"
+
 /** Référence un item déjà notifié à `extractItems` (par position dans la liste envoyée), pas encore identifié côté renderer. */
 export interface MeetingItemRemoval {
   type: MeetingItemType
   /** Position (0-based) dans la liste `existingDecisions`/`existingTasks` envoyée à `extractItems`. */
   index: number
+  reason: MeetingRemovalReason
 }
 
-/** La réunion revient parfois sur une décision déjà notée : `removals` permet de défaire l'item (et son ticket Jira) correspondant. */
+/** La réunion précise, corrige ou complète un item déjà noté : son texte (et son ticket Jira) est réécrit, il n'est pas recréé. */
+export interface MeetingItemUpdate {
+  type: MeetingItemType
+  /** Position (0-based), comme pour `MeetingItemRemoval`. */
+  index: number
+  text: string
+}
+
+/**
+ * La réunion revient souvent sur ce qui vient d'être noté : `removals` défait un item (et son ticket Jira),
+ * `updates` le réécrit en place, `additions` en ajoute. Un regroupement (« tout ça en un seul ticket »)
+ * est un `update` sur l'item conservé plus des `removals` `replaced` pour les autres.
+ */
 export interface MeetingExtraction {
   additions: MeetingItemDraft[]
   removals: MeetingItemRemoval[]
+  updates: MeetingItemUpdate[]
 }
 
 /** Décision ou tâche de point d'équipe persistée (userData/meeting-decisions.json). */

@@ -1,6 +1,6 @@
-import { app } from "electron"
+import { accountDataPath } from "./accountPaths"
 import { mkdir, readFile, writeFile } from "fs/promises"
-import { dirname, join } from "path"
+import { dirname } from "path"
 import { AUTONOMY_MAX_LEVEL } from "../shared/autonomy"
 import type { AutonomyCategory, AutonomyCategoryId } from "../shared/autonomy"
 
@@ -18,16 +18,20 @@ const DEFAULTS: AutonomyCategory[] = [
   { id: "tickets-prets", label: "Tickets prêts", level: AUTONOMY_MAX_LEVEL },
   { id: "criteres-recette", label: "Critères de recette", level: 2 },
   { id: "alignement-figma", label: "Alignement Figma", level: 3 },
+  // Passage d'un ticket à « terminé » quand ses pull requests sont fusionnées (voir linkSync.ts) : validé à la main au début.
+  { id: "statut-tickets", label: "Statut des tickets", level: 2 },
 ]
 
 function autonomyFilePath(): string {
-  return join(app.getPath("userData"), "autonomy.json")
+  return accountDataPath("autonomy.json")
 }
 
 async function readCategories(): Promise<AutonomyCategory[]> {
   try {
     const raw = await readFile(autonomyFilePath(), "utf-8")
-    return JSON.parse(raw) as AutonomyCategory[]
+    const stored = JSON.parse(raw) as AutonomyCategory[]
+    // Une catégorie ajoutée depuis l'écriture du fichier apparaît avec son niveau par défaut.
+    return [...stored, ...DEFAULTS.filter((category) => !stored.some((known) => known.id === category.id))]
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return DEFAULTS
     throw error
@@ -50,4 +54,15 @@ export async function setLevel(id: AutonomyCategoryId, level: number): Promise<A
   const next = categories.map((category) => (category.id === id ? { ...category, level: clamped } : category))
   await writeCategories(next)
   return next
+}
+
+export async function isAutonomous(id: AutonomyCategoryId): Promise<boolean> {
+  const category = (await readCategories()).find((entry) => entry.id === id)
+  return category !== undefined && category.level >= AUTONOMY_MAX_LEVEL
+}
+
+/** Une validation de l'utilisateur rapproche la catégorie de l'autonomie (« Encore N validations »). */
+export async function recordValidation(id: AutonomyCategoryId): Promise<void> {
+  const category = (await readCategories()).find((entry) => entry.id === id)
+  if (category && category.level < AUTONOMY_MAX_LEVEL) await setLevel(id, category.level + 1)
 }

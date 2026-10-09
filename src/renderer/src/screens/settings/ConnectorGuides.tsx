@@ -83,25 +83,6 @@ const GUIDES: Record<UpcomingConnectorId, ConnectorGuide> = {
       },
     ],
   },
-  github: {
-    title: "Comment connecter GitHub",
-    intro: NOT_AVAILABLE_YET,
-    steps: [
-      {
-        title: "Ouvrir vos jetons GitHub",
-        body: <>Connectez-vous, puis créez un jeton d&apos;accès personnel.</>,
-        open: () => window.api.settings.openSetupPage("githubTokens"),
-      },
-      {
-        title: "Créer un jeton « fine-grained » nommé « BYKO »",
-        body: <>Limitez-le aux dépôts concernés et à une durée raisonnable.</>,
-      },
-      {
-        title: "Autoriser la lecture des pull requests",
-        body: <>BYKO s&apos;en servira pour relier les pull requests aux tickets Jira.</>,
-      },
-    ],
-  },
 }
 
 function UpcomingConnectorGuide({ id }: { id: UpcomingConnectorId }): React.JSX.Element {

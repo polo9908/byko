@@ -34,4 +34,13 @@ export interface CalendarEventSummary {
   start: string
   end: string
   allDay: boolean
+  /** Lieu physique ou texte libre du champ « Lieu » (sans l'éventuel lien de visio), 200 caractères au plus. */
+  location?: string
+  /** Lien de visioconférence : toujours une URL https validée côté main (jamais une URL brute de l'invitation). */
+  meetingUrl?: string
+  /**
+   * Noms des invités présents (réponse « refusé » et salles exclues), 30 au plus. Jamais d'adresse e-mail :
+   * le nom affiché de l'invitation, sinon le début de l'adresse mis en forme (« paul.lavergne@… » → « Paul Lavergne »).
+   */
+  attendees?: string[]
 }

@@ -1,0 +1,86 @@
+/* Pastille d'état du modèle de transcription (voir SpeechModelPill.tsx). */
+
+.speech-pill {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 55;
+  width: min(380px, calc(100vw - 48px));
+  margin-left: calc(min(380px, 100vw - 48px) / -2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: var(--bcc-color-surface);
+  box-shadow:
+    0 12px 40px rgba(29, 29, 31, 0.16),
+    0 0 0 1px var(--bcc-color-border);
+  opacity: 0;
+}
+
+.speech-pill-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.speech-pill-text {
+  font-size: 13.5px;
+  line-height: 1.35;
+  color: var(--bcc-color-text);
+}
+
+.speech-pill-percent {
+  flex: none;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--bcc-color-text-muted);
+}
+
+.speech-pill-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--bcc-color-border);
+  overflow: hidden;
+}
+
+.speech-pill-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--bcc-color-text);
+  transform-origin: left center;
+  scale: 0 1;
+}
+
+.speech-pill--ready .speech-pill-fill {
+  background: var(--bcc-color-success);
+}
+
+.speech-pill--error {
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+}
+
+.speech-pill--error .speech-pill-text {
+  flex: 1;
+  color: var(--bcc-color-danger);
+}
+
+.speech-pill-retry {
+  flex: none;
+  height: 32px;
+  padding: 0 14px;
+  border: none;
+  border-radius: var(--bcc-radius-pill);
+  background: var(--bcc-color-text);
+  color: var(--bcc-color-surface);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}

@@ -1,3 +1,4 @@
+import { requireActiveAccount } from "../accountPaths"
 import { shell } from "electron"
 import { deleteSecret, getSecret, setSecret } from "../secrets"
 import { AI_PROVIDERS, getProviderMeta } from "../../shared/ai"
@@ -81,6 +82,7 @@ export async function getStatus(): Promise<AIConnectionStatus> {
 }
 
 export async function useDetectedKey(provider: AIProviderId): Promise<AIConnectionStatus> {
+  requireActiveAccount() // avant tout envoi : sans compte connecté, le jeton ne quitte pas l'appareil
   const detected = process.env[getProviderMeta(provider).envVar]
   if (!detected) {
     throw new Error(`Aucune clé ${getProviderMeta(provider).label} détectée sur cet appareil.`)
@@ -93,6 +95,7 @@ export async function useDetectedKey(provider: AIProviderId): Promise<AIConnecti
 }
 
 export async function setCustomKey(provider: AIProviderId, key: string): Promise<AIConnectionStatus> {
+  requireActiveAccount() // avant tout envoi : sans compte connecté, le jeton ne quitte pas l'appareil
   if (!(await verifyKey(provider, key))) {
     throw new Error(`Clé ${getProviderMeta(provider).label} invalide. Vérifiez qu'elle est correcte et active.`)
   }

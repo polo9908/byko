@@ -1,0 +1,147 @@
+/*
+ * Couche de mouvement physique (voir lib/motion.ts) : uniquement la forme des éléments que les
+ * ressorts animent. Les positions, échelles et opacités sont écrites par le moteur.
+ */
+
+/* Halo du point « en direct » (voir `heartbeat`) : reprend la couleur du point. */
+.motion-halo {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Fantôme de la morphose bouton → carte (voir `morphFromRect`). */
+.motion-morph {
+  position: fixed;
+  z-index: 60;
+  background: var(--bcc-color-surface);
+  box-shadow: 0 10px 36px rgba(0, 0, 0, 0.1);
+  pointer-events: none;
+}
+
+.motion-morph-dot {
+  position: absolute;
+  border-radius: 50%;
+  background: #ff3b30;
+}
+
+/* Compteur à rouleaux. */
+.motion-odo {
+  display: inline-flex;
+  font-variant-numeric: tabular-nums;
+}
+
+.motion-odo-col {
+  display: inline-block;
+  height: 1.25em;
+  line-height: 1.25em;
+  overflow: hidden;
+  vertical-align: top;
+}
+
+.motion-odo-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.motion-odo-stack > span {
+  height: 1.25em;
+}
+
+.motion-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Écriture en direct : lettres (ou mots) qui éclosent, caret qui glisse derrière. */
+.motion-typing {
+  position: relative;
+}
+
+.motion-word {
+  white-space: nowrap;
+}
+
+.motion-letter {
+  display: inline-block;
+}
+
+.motion-caret {
+  position: absolute;
+  left: 0;
+  top: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+/* Ticket Jira qui s'envole jusqu'au compteur de la carte (voir `flyTo`). */
+.motion-fly-ticket {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 400;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: var(--bcc-color-surface);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.16);
+  color: var(--bcc-color-success);
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Étiquette Jira dont la largeur se transforme en ressort. */
+.motion-chip {
+  display: inline-flex;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.motion-chip-inner {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Bouton d'envoi qui se resserre en cercle. */
+.motion-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.motion-spin {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-dasharray: 30 14;
+}
+
+.motion-send-check {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

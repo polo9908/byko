@@ -5,11 +5,14 @@
 export type JournalEntryMode = "auto" | "with_user"
 
 /**
- * Décrit comment défaire une entrée. Un seul type existe pour l'instant
- * (commentaire Jira) : la liste s'étend à mesure que les intégrations
- * gagnent des actions réversibles. Une entrée sans `undo` n'est pas annulable.
+ * Décrit comment défaire une entrée : la liste s'étend à mesure que les
+ * intégrations gagnent des actions réversibles. Une entrée sans `undo` n'est
+ * pas annulable.
  */
-export type JournalUndo = { type: "jira-comment"; issueKey: string; commentId: string }
+export type JournalUndo =
+  | { type: "jira-comment"; issueKey: string; commentId: string }
+  /** Lien distant posé par la liaison automatique ; `globalId` évite qu'il soit reposé à la synchronisation suivante. */
+  | { type: "jira-remote-link"; issueKey: string; linkId: string; globalId: string }
 
 export interface JournalEntry {
   id: string
