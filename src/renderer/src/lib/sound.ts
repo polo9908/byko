@@ -37,9 +37,12 @@ export type SfxName =
   | "saved"
   | "stop"
   | "night"
+  | "liquidBirth"
+  | "liquidMove"
+  | "liquidSplit"
 
 /** Cues de l'assistant de configuration. */
-export type SetupSoundName = "step" | "tick" | "ok" | "err" | "done"
+export type SetupSoundName = "step" | "tick" | "ok" | "err" | "done" | "focus" | "pop"
 
 export interface SoundSnapshot {
   /** Sourdine active : aucune cue ne part, ni de l'app ni de l'assistant. */
@@ -163,6 +166,21 @@ class SfxEngine {
         this.tone(graph, 659.25, t + 0.28, 1.6, { g: 0.14, a: 0.05, send: 0.8 })
         this.tone(graph, 523.25, t + 0.56, 2.4, { g: 0.14, a: 0.05, send: 0.8 })
         break
+      // Goutte de la frise : des bulles d'eau très douces (sinusoïdes qui montent, un souffle d'écume),
+      // perceptibles sans jamais couvrir le reste. Pas dans le prototype : ajoutées avec la goutte.
+      case "liquidBirth":
+        this.tone(graph, 360, t, 0.16, { g: 0.07, a: 0.008, glide: 760, send: 0.4 })
+        this.tone(graph, 1180, t + 0.045, 0.09, { g: 0.022, a: 0.006, glide: 1500, send: 0.5 })
+        this.noise(graph, t, 0.07, 3400, 0.012)
+        break
+      case "liquidMove":
+        this.tone(graph, 640 + Math.random() * 140, t, 0.075, { g: 0.04, a: 0.005, glide: 980, send: 0.3 })
+        break
+      case "liquidSplit":
+        this.tone(graph, 520, t, 0.1, { g: 0.06, a: 0.006, glide: 1040, send: 0.4 })
+        this.tone(graph, 1250, t + 0.07, 0.18, { g: 0.045, a: 0.006, glide: 560, send: 0.55 })
+        this.noise(graph, t + 0.02, 0.09, 4200, 0.016)
+        break
     }
   }
 
@@ -261,6 +279,14 @@ class SetupSoundEngine {
         for (const [index, f] of [523.25, 659.25, 783.99, 1046.5].entries()) {
           this.tone(graph, f, t + index * 0.09, 1.3, 0.11)
         }
+        break
+      // Micro-interactions de l'assistant (ajoutées après le prototype) : champ qui prend le focus, choix qui s'enclenche.
+      case "focus":
+        this.tone(graph, 1568, t, 0.09, 0.035)
+        break
+      case "pop":
+        this.tone(graph, 988, t, 0.1, 0.07)
+        this.tone(graph, 1318.5, t + 0.04, 0.16, 0.06)
         break
     }
   }

@@ -474,7 +474,6 @@
   height: 100%;
   background: var(--bcc-color-text);
   border-radius: 2px;
-  transition: width 1.1s ease;
 }
 
 .onboarding-actions {
@@ -482,4 +481,94 @@
   justify-content: space-between;
   align-items: center;
   margin-top: 24px;
+}
+
+/* Choix du compte après une déconnexion : mêmes cartes que la sélection du fournisseur d'IA (A3). */
+.onboarding-accounts {
+  gap: 8px;
+}
+
+.onboarding-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  background: var(--bcc-color-surface);
+  color: var(--bcc-color-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.onboarding-account:hover:not(:disabled) {
+  border-color: #0071e3;
+  background: rgba(0, 113, 227, 0.05);
+}
+
+.onboarding-account:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.onboarding-account-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--bcc-color-text);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.onboarding-account-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.onboarding-account-email {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.onboarding-account-meta {
+  font-size: 13px;
+  color: var(--bcc-color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* « Mes comptes » : lignes empilées sous la configuration, dans le flux de la page. */
+.onboarding-mes-comptes {
+  margin-top: 40px;
+}
+
+.onboarding-mes-comptes-title {
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bcc-color-text-muted);
+}
+
+.onboarding-mes-comptes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.onboarding-account-chevron {
+  margin-left: auto;
+  color: var(--bcc-color-text-muted);
+  font-size: 18px;
 }

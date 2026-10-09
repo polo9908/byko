@@ -5,14 +5,14 @@
  */
 
 /** Connecteurs réellement branchés : on peut s'y connecter depuis Réglages. */
-export type ConnectableConnectorId = "jira" | "ai" | "figma" | "calendar"
+export type ConnectableConnectorId = "jira" | "ai" | "figma" | "calendar" | "github"
 
 /**
  * Connecteurs annoncés dans Réglages (D1) mais sans backend : leur guide
  * reste consultable (« Voir comment faire »), la connexion est inactive
  * (voir tickets E3 et D2 du backlog).
  */
-export type UpcomingConnectorId = "slack" | "teams" | "outlook" | "github"
+export type UpcomingConnectorId = "slack" | "teams" | "outlook"
 
 export type ConnectorId = ConnectableConnectorId | UpcomingConnectorId
 
@@ -30,10 +30,9 @@ export interface ConnectorSummary {
  * Les URL vivent côté main uniquement (liste blanche) : le renderer n'envoie
  * qu'un identifiant, jamais une URL (voir `docs/ipc/connector-setup-guides.md`).
  */
-export type ConnectorSetupPage = "slackCreateApp" | "microsoftEntraApps" | "githubTokens"
+export type ConnectorSetupPage = "slackCreateApp" | "microsoftEntraApps"
 
 export const CONNECTOR_SETUP_PAGES: readonly ConnectorSetupPage[] = [
   "slackCreateApp",
   "microsoftEntraApps",
-  "githubTokens",
 ]

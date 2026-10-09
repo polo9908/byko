@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { enter, impulse, pop, prefersReducedMotion, spring, SPRINGS, stagger } from "@renderer/lib/motion"
 import { CheckIcon } from "./icons"
 import { playSetupSound } from "@renderer/lib/sound"
 import "./onboarding.css"
@@ -22,6 +23,55 @@ function ReadyStep({ onStart }: ReadyStepProps): React.JSX.Element {
   const [ready, setReady] = useState(false)
   const [ticketCount, setTicketCount] = useState<number | null>(null)
 
+  const rootRef = useRef<HTMLDivElement>(null)
+  const checkRef = useRef<HTMLSpanElement>(null)
+  const barRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
+
+  // La coche éclot et se trace, le reste se pose en cascade, le tout au rythme du son d'entrée.
+  useLayoutEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    stagger(Array.from(root.children).filter((el): el is HTMLElement => el instanceof HTMLElement && el !== checkRef.current), 80, 260)
+    if (checkRef.current) pop(checkRef.current, 0, 0.3)
+    const shape = checkRef.current?.querySelector<SVGGeometryElement>("polyline")
+    if (shape && !prefersReducedMotion()) {
+      shape.setAttribute("pathLength", "1")
+      shape.style.strokeDasharray = "1"
+      shape.style.strokeDashoffset = "1"
+      const t = setTimeout(() => {
+        spring(1, 0, { stiffness: 200, damping: 18 }, (o) => {
+          shape.style.strokeDashoffset = o <= 0.001 ? "0" : o.toFixed(3)
+        })
+      }, 160)
+      return () => clearTimeout(t)
+    }
+    return undefined
+  }, [])
+
+  // La barre de lancement se remplit en ressort : 60 % puis 100 % avec un léger dépassement.
+  useEffect(() => {
+    const bar = barRef.current
+    if (!bar) return
+    const target = ready ? 100 : 60
+    if (prefersReducedMotion()) {
+      bar.style.width = `${target}%`
+      return
+    }
+    const s = spring(ready ? 60 : 0, target, SPRINGS.gentle, (w) => {
+      bar.style.width = `${Math.max(0, Math.min(103, w)).toFixed(2)}%`
+    })
+    return () => s.stop()
+  }, [ready])
+
+  // « Commencer ma journée » arrive en ressort une fois tout lu.
+  useEffect(() => {
+    if (!ready || !buttonRef.current) return
+    pop(buttonRef.current, 80, 0.7)
+    enter(buttonRef.current, 0, 10)
+    impulse(buttonRef.current, 6)
+  }, [ready])
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setReady(true)
@@ -37,8 +87,8 @@ function ReadyStep({ onStart }: ReadyStepProps): React.JSX.Element {
 
   return (
     <div className="onboarding-screen">
-      <div className="onboarding-ready">
-        <span className="onboarding-ready-check" aria-hidden="true">
+      <div className="onboarding-ready" ref={rootRef}>
+        <span className="onboarding-ready-check" ref={checkRef} aria-hidden="true">
           <CheckIcon size={26} />
         </span>
         <h1 className="onboarding-ready-title">C&apos;est prêt.</h1>
@@ -50,10 +100,10 @@ function ReadyStep({ onStart }: ReadyStepProps): React.JSX.Element {
             : "Je relis vos tickets en cours…"}
         </p>
         <div className="onboarding-ready-bar-track">
-          <div className="onboarding-ready-bar-fill" style={{ width: ready ? "100%" : "60%" }} />
+          <div className="onboarding-ready-bar-fill" ref={barRef} />
         </div>
         {ready && (
-          <button type="button" className="onboarding-button onboarding-button--primary" onClick={onStart}>
+          <button ref={buttonRef} type="button" className="onboarding-button onboarding-button--primary" onClick={onStart}>
             Commencer ma journée
           </button>
         )}

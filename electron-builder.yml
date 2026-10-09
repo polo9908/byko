@@ -1,33 +1,53 @@
 appId: com.byko.app
-productName: BYKO
+productName: Byko
 directories:
   buildResources: build
+# Liste blanche : seuls le code compilé et ses dépendances de production partent dans l'installeur (ni sources, ni docs,
+# ni outils internes, ni `.env`).
 files:
-  - "!**/.vscode/*"
-  - "!src/*"
-  - "!electron.vite.config.{js,ts,mjs,cjs}"
-  - "!{.eslintignore,.eslintrc.cjs,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
-  - "!{.env,.env.*,.npmrc,pnpm-lock.yaml}"
+  - out/**/*
+  - resources/**/*
+  - package.json
 asarUnpack:
   - resources/**
   - node_modules/onnxruntime-node/**
+# Source des mises à jour automatiques (src/main/updater.ts) et destination de `--publish` : les releases du dépôt.
+publish:
+  provider: github
+  owner: polo9908
+  repo: byko
 mac:
+  icon: build/icon.png
+  category: public.app-category.productivity
+  # Signature et notarisation : pilotées par l'environnement (CSC_LINK, CSC_KEY_PASSWORD, APPLE_ID,
+  # APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID) — voir docs/release.md. Sans elles, le build local reste possible mais
+  # macOS refusera de l'ouvrir chez un tiers et la mise à jour automatique ne fonctionnera pas.
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     NSMicrophoneUsageDescription: >-
-      BCC a besoin du micro pour transcrire vos points d'équipe (traité sur cet
+      Byko a besoin du micro pour transcrire vos points d'équipe (traité sur cet
       appareil, jamais envoyé sans votre action).
   target:
+    # `zip` est requis par la mise à jour automatique sur macOS ; `dmg` est ce que l'on télécharge.
     - target: dmg
       arch:
         - arm64
         - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
 win:
+  icon: build/icon.png
   target:
     - target: nsis
       arch:
         - x64
 linux:
+  icon: build/icon.png
   target:
     - target: AppImage
       arch:

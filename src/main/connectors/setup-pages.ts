@@ -10,7 +10,6 @@ import type { ConnectorSetupPage } from "../../shared/connectors"
 const SETUP_PAGE_URLS: Record<ConnectorSetupPage, string> = {
   slackCreateApp: "https://api.slack.com/apps",
   microsoftEntraApps: "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade",
-  githubTokens: "https://github.com/settings/tokens",
 }
 
 /** Ouvre la page dans le navigateur système, jamais dans une fenêtre interne. */

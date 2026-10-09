@@ -35,10 +35,6 @@ body {
 
 /* Bouton Journal flottant (voir App.tsx) : seul accès au Journal sur Point d'équipe, qui n'a pas d'en-tête. */
 .global-journal-button {
-  position: fixed;
-  top: 24px;
-  right: 40px;
-  z-index: 100;
   display: flex;
   align-items: center;
   gap: 6px;

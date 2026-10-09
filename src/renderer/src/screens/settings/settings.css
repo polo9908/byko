@@ -12,26 +12,150 @@
 }
 
 .settings-modal {
+  display: flex;
   width: 100%;
-  max-width: 560px;
-  max-height: 85vh;
-  overflow-y: auto;
+  max-width: 780px;
+  height: min(640px, 85vh);
+  overflow: hidden;
   background: var(--bcc-color-surface);
   border-radius: var(--bcc-radius-card);
   box-shadow: 0 24px 64px rgba(29, 29, 31, 0.25);
+}
+
+/* Barre latérale : une entrée par section, le contenu à droite défile seul. */
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 210px;
+  flex-shrink: 0;
+  padding: 20px 12px;
+  background: var(--bcc-color-bg);
+}
+
+.settings-sidebar .settings-title {
+  padding: 0 12px 14px;
+  font-size: 20px;
+}
+
+.settings-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: 10px;
+  background: none;
+  color: var(--bcc-color-text-muted);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-nav svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.settings-nav:hover {
+  background: rgba(29, 29, 31, 0.06);
+}
+
+.settings-nav[aria-current="page"] {
+  background: var(--bcc-color-surface);
+  color: var(--bcc-color-text);
+  box-shadow: 0 1px 3px rgba(29, 29, 31, 0.1);
+}
+
+.settings-nav:focus-visible {
+  outline: 2px solid var(--bcc-color-accent);
+  outline-offset: 2px;
+}
+
+.settings-nav-badge {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: var(--bcc-radius-pill);
+  background: rgba(29, 29, 31, 0.1);
+  font-size: 11px;
+}
+
+.settings-sidebar-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: auto;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--bcc-color-text-muted);
+}
+
+.settings-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 16px;
+}
+
+.settings-section-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
 }
 
 .settings-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 24px 0;
+  padding: 20px 24px 0;
 }
 
 .settings-title {
   font-size: 24px;
   font-weight: 600;
   margin: 0;
+}
+
+.settings-range-row {
+  padding: 12px 24px;
+}
+
+.settings-range-head {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.settings-range {
+  width: 100%;
+  accent-color: var(--bcc-color-text);
+}
+
+/* Fenêtre étroite : la barre se réduit aux icônes. */
+@media (max-width: 720px) {
+  .settings-sidebar {
+    width: 64px;
+  }
+  .settings-sidebar .settings-title,
+  .settings-sidebar-foot,
+  .settings-nav-label,
+  .settings-nav-badge {
+    display: none;
+  }
+  .settings-nav {
+    justify-content: center;
+  }
 }
 
 .settings-close {
@@ -167,7 +291,8 @@
   flex-shrink: 0;
 }
 
-.settings-connect-button:disabled {
+.settings-connect-button:disabled,
+.settings-connect-button[aria-disabled="true"] {
   opacity: 0.4;
   cursor: not-allowed;
 }
@@ -269,15 +394,69 @@
   flex-shrink: 0;
 }
 
-.settings-footer {
+/* Section Confidentialité : interrupteur de consentement au partage avec l'IA. */
+.settings-privacy-label {
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-privacy-help {
+  padding: 0 24px 8px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 24px 20px;
-  margin-top: 12px;
-  border-top: 1px solid var(--bcc-color-border);
-  font-size: 12px;
-  color: var(--bcc-color-text-muted);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.settings-privacy-text {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.settings-switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 13px;
+  background: var(--bcc-color-border);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.settings-switch--on {
+  background: var(--bcc-color-success);
+}
+
+.settings-switch:focus-visible {
+  outline: 2px solid var(--bcc-color-accent);
+  outline-offset: 2px;
+}
+
+/* Occupé : aria-disabled plutôt que `disabled`, pour que le bouton garde le focus clavier. */
+.settings-switch:disabled,
+.settings-switch[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: progress;
+}
+
+.settings-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(29, 29, 31, 0.25);
+  transition: transform 0.15s ease;
+}
+
+.settings-switch--on .settings-switch-thumb {
+  transform: translateX(18px);
 }
 
 .settings-footer-lock {
@@ -444,4 +623,289 @@
   .setup-wizard-open {
     margin-left: 32px;
   }
+}
+
+/* Accessibilité : thèmes à icône, palettes avec aperçu, durée des notifications. */
+.settings-a11y-theme {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 24px 6px;
+}
+
+.settings-a11y-theme-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.settings-a11y-theme-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-a11y-theme-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-a11y-theme-subtitle {
+  margin: 0;
+  font-size: 12px;
+  color: var(--bcc-color-text-muted);
+}
+
+.settings-a11y-subtitle {
+  margin: 8px 24px 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.settings-chip {
+  padding: 6px 14px;
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-pill);
+  background: var(--bcc-color-surface);
+  color: var(--bcc-color-text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-chip[aria-pressed="true"],
+.settings-chip[aria-checked="true"] {
+  background: var(--bcc-color-text);
+  border-color: var(--bcc-color-text);
+  color: var(--bcc-color-surface);
+}
+
+.settings-chip:focus-visible,
+.settings-palette:focus-visible {
+  outline: 2px solid var(--bcc-color-accent);
+  outline-offset: 2px;
+}
+
+.settings-palettes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 0 24px 8px;
+}
+
+.settings-palette {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 8px;
+  border: 2px solid var(--bcc-color-border);
+  border-radius: 14px;
+  background: var(--bcc-color-surface);
+  color: var(--bcc-color-text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-palette[aria-checked="true"] {
+  border-color: var(--bcc-color-text);
+}
+
+.settings-palette-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-palette-hint {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--bcc-color-text-muted);
+}
+
+.settings-palette-preview {
+  display: flex;
+  height: 64px;
+  padding: 8px;
+  border-radius: 9px;
+}
+
+.settings-palette-card {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 7px;
+}
+
+.settings-palette-line {
+  height: 4px;
+  border-radius: 2px;
+  opacity: 0.75;
+}
+
+.settings-palette-line--short {
+  width: 55%;
+}
+
+.settings-palette-chips {
+  display: flex;
+  gap: 5px;
+  margin-top: 2px;
+}
+
+.settings-palette-chips i {
+  width: 16px;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.settings-toast-preview {
+  position: relative;
+  overflow: hidden;
+  margin: 4px 0 10px;
+  padding: 12px 14px 16px;
+  border: 1px solid var(--bcc-color-border);
+  border-radius: 14px;
+  background: var(--bcc-color-surface);
+  box-shadow: 0 6px 20px rgba(29, 29, 31, 0.15);
+}
+
+.settings-toast-preview b,
+.settings-toast-preview span {
+  display: block;
+}
+
+.settings-toast-preview b {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-toast-preview span {
+  font-size: 12px;
+  color: var(--bcc-color-text-muted);
+}
+
+.settings-toast-preview i {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 4px;
+  background: var(--bcc-color-text);
+  transform-origin: left;
+  animation: settings-toast-bar linear infinite;
+}
+
+@keyframes settings-toast-bar {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* Les aides d'option passent à la ligne (sinon tronquées avec le zoom ou une fenêtre étroite). */
+.settings-privacy-row .settings-row-subtitle {
+  white-space: normal;
+}
+
+/* Comptes. */
+.settings-account-avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bcc-color-text);
+  color: var(--bcc-color-surface);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.settings-account-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--bcc-radius-pill);
+  background: var(--bcc-color-success);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.settings-account-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-account-hint {
+  margin: 0;
+  padding: 4px 24px;
+}
+
+/* Vocabulaire des réunions. */
+.settings-vocab-browser,
+.settings-vocab-form,
+.settings-vocab-import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 24px 8px;
+}
+
+.settings-vocab-form .settings-connect-button,
+.settings-vocab-import .settings-connect-button {
+  align-self: flex-start;
+}
+
+.settings-vocab-textarea {
+  resize: vertical;
+  min-height: 90px;
+  font-family: inherit;
+}
+
+.settings-vocab-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--bcc-color-border);
+  border-radius: var(--bcc-radius-control);
+}
+
+.settings-vocab-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.settings-vocab-list li + li {
+  border-top: 1px solid var(--bcc-color-border);
+}
+
+.settings-vocab-list li span {
+  color: var(--bcc-color-text-muted);
+}
+
+.settings-vocab-hint {
+  margin: 0;
+  padding: 4px 24px;
 }

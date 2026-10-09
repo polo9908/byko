@@ -30,4 +30,23 @@ export default tseslint.config(
       "@typescript-eslint/no-explicit-any": "error",
     },
   },
+  {
+    // L'extension navigateur est du JavaScript exécuté par Chrome, qui n'exécute
+    // pas de TypeScript : les règles de typage ne s'y appliquent pas, et `chrome`
+    // n'existe que dans ce contexte.
+    files: ["browser-extension/**/*.js"],
+    languageOptions: {
+      globals: { chrome: "readonly" },
+    },
+    rules: {
+      "@typescript-eslint/explicit-function-return-type": "off",
+    },
+  },
+  {
+    // Scripts d'outillage, lancés tels quels par Node et hors build TypeScript.
+    files: ["scripts/**/*.mjs"],
+    rules: {
+      "@typescript-eslint/explicit-function-return-type": "off",
+    },
+  },
 )

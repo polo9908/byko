@@ -5,13 +5,19 @@
  */
 export const AUTONOMY_MAX_LEVEL = 5
 
-export type AutonomyCategoryId = "relances" | "tickets-prets" | "criteres-recette" | "alignement-figma"
+export type AutonomyCategoryId =
+  | "relances"
+  | "tickets-prets"
+  | "criteres-recette"
+  | "alignement-figma"
+  | "statut-tickets"
 
 export const AUTONOMY_CATEGORY_IDS: AutonomyCategoryId[] = [
   "relances",
   "tickets-prets",
   "criteres-recette",
   "alignement-figma",
+  "statut-tickets",
 ]
 
 export interface AutonomyCategory {

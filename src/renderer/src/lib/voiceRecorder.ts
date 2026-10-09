@@ -60,55 +60,80 @@ export async function startVoiceRecording(): Promise<VoiceRecording> {
 }
 
 export interface LiveVoiceRecording {
-  stop: () => void
+  /**
+   * Arrête le micro et attend que le dernier segment (celui en cours, même court) ait été remis à
+   * `onSegment`. Idempotent : les appels suivants renvoient la même promesse.
+   */
+  stop: () => Promise<void>
 }
 
 /**
- * Transcription "en direct" (B3) : pas de vrai streaming Whisper, mais des
- * segments successifs — un `MediaRecorder` redémarré toutes les `segmentMs`
- * sur le même flux micro, chaque segment étant un fichier WebM autonome donc
- * fiable à décoder, contrairement à un unique enregistrement fragmenté par
- * `timeslice`. `onSegment` est rappelé pour chaque segment non silencieux.
+ * Transcription "en direct" (B3) : pas de vrai streaming Whisper, mais des segments successifs.
+ * Chaque segment est un fichier WebM autonome (donc fiable à décoder, contrairement à un unique
+ * enregistrement fragmenté par `timeslice`) et dure `segmentMs + overlapMs` : un nouveau segment
+ * démarre toutes les `segmentMs`, avant la fin du précédent. Les `overlapMs` du recouvrement sont
+ * donc entendus deux fois — un mot prononcé à la jointure n'est plus coupé en deux, et chaque
+ * segment démarre avec un peu de contexte (l'appelant retire le texte en double, voir
+ * `lib/transcript.ts`). `onSegment` reçoit les segments non silencieux, toujours dans l'ordre.
  */
 export async function startLiveVoiceRecording(
   segmentMs: number,
+  overlapMs: number,
   onSegment: (audio: Float32Array) => void,
 ): Promise<LiveVoiceRecording> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+  const recorders: MediaRecorder[] = []
+  const timers: ReturnType<typeof setTimeout>[] = []
+  // Remise ordonnée : un segment court (le dernier) ne doit jamais passer avant le précédent.
+  let delivery: Promise<void> = Promise.resolve()
   let stopped = false
+  let stopping: Promise<void> | null = null
 
-  async function recordSegment(): Promise<void> {
+  function startSegment(): void {
     if (stopped) return
     const recorder = new MediaRecorder(stream)
     const chunks: Blob[] = []
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunks.push(event.data)
     }
-    const segmentEnded = new Promise<void>((resolve) => {
+    const ended = new Promise<void>((resolve) => {
       recorder.onstop = () => resolve()
     })
-    recorder.start()
-    await new Promise((resolve) => setTimeout(resolve, segmentMs))
-    if (recorder.state !== "inactive") recorder.stop()
-    await segmentEnded
-
-    if (chunks.length > 0) {
+    const audio = ended.then(async (): Promise<Float32Array | null> => {
+      if (chunks.length === 0) return null
       try {
-        const audio = await decodeToPcm(new Blob(chunks, { type: recorder.mimeType }))
-        if (!isSilent(audio)) onSegment(audio)
+        return await decodeToPcm(new Blob(chunks, { type: recorder.mimeType }))
       } catch {
-        // Segment illisible (trop court, coupé pile à l'arrêt) : ignoré, le suivant prendra le relais.
+        // Segment illisible (trop court, coupé pile à l'arrêt) : ignoré, les voisins couvrent la jointure.
+        return null
       }
-    }
-    void recordSegment()
+    })
+    delivery = delivery.then(async () => {
+      const pcm = await audio
+      if (pcm && !isSilent(pcm)) onSegment(pcm)
+    })
+    recorders.push(recorder)
+    recorder.start()
+    timers.push(
+      setTimeout(() => {
+        if (recorder.state !== "inactive") recorder.stop()
+      }, segmentMs + overlapMs),
+    )
+    timers.push(setTimeout(startSegment, segmentMs))
   }
 
-  void recordSegment()
+  startSegment()
 
   return {
     stop: () => {
-      stopped = true
-      stream.getTracks().forEach((track) => track.stop())
+      if (!stopping) {
+        stopped = true
+        timers.forEach(clearTimeout)
+        for (const recorder of recorders) if (recorder.state !== "inactive") recorder.stop()
+        stream.getTracks().forEach((track) => track.stop())
+        stopping = delivery
+      }
+      return stopping
     },
   }
 }

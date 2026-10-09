@@ -1,3 +1,4 @@
+import { requireActiveAccount } from "../accountPaths"
 import { shell } from "electron"
 import { deleteSecret, getSecret, setSecret } from "../secrets"
 import { addEntry } from "../journal"
@@ -39,6 +40,7 @@ function authHeader(creds: JiraCredentials): string {
 
 async function jiraFetch(creds: JiraCredentials, path: string, init: RequestInit = {}): Promise<Response> {
   return fetch(`https://${creds.domain}/rest/api/3${path}`, {
+    signal: AbortSignal.timeout(20_000),
     ...init,
     headers: {
       Authorization: authHeader(creds),
@@ -55,6 +57,7 @@ export async function openTokenPage(): Promise<void> {
 }
 
 export async function connect(domain: string, email: string, apiToken: string): Promise<JiraConnectionStatus> {
+  requireActiveAccount() // avant tout envoi : sans compte connecté, le jeton ne quitte pas l'appareil
   const creds: JiraCredentials = { domain, email, apiToken }
   const response = await jiraFetch(creds, "/myself")
   if (!response.ok) {
@@ -63,6 +66,15 @@ export async function connect(domain: string, email: string, apiToken: string): 
   const me = (await response.json()) as { displayName?: string }
   await setSecret(SECRET_KEY, JSON.stringify(creds))
   return { connected: true, domain, email, displayName: me.displayName }
+}
+
+/** Prénom et nom du profil Jira (`/myself`) ; `undefined` si Jira n'est pas connecté ou ne répond pas. */
+export async function fetchDisplayName(): Promise<string | undefined> {
+  const creds = await readCredentials()
+  if (!creds) return undefined
+  const response = await jiraFetch(creds, "/myself")
+  if (!response.ok) return undefined
+  return ((await response.json()) as { displayName?: string }).displayName?.trim() || undefined
 }
 
 export async function getStatus(): Promise<JiraConnectionStatus> {
@@ -135,6 +147,42 @@ async function findStandardIssueType(creds: JiraCredentials, projectKey: string)
 }
 
 /** Crée un vrai ticket dans le projet par défaut (voir `setDefaultProject`), pour B3 (tickets extraits en direct). */
+/** Limite du champ « résumé » de Jira : au-delà, ou avec un retour à la ligne, l'API répond 400. */
+const SUMMARY_MAX_CHARS = 255
+
+/**
+ * Titre (≤ 255 caractères, une seule ligne) et, si le texte est plus long, description reprenant le texte
+ * complet : un regroupement de plusieurs tâches dépasse facilement la limite du résumé, et rien ne doit se perdre.
+ */
+function splitSummary(text: string): { summary: string; description?: unknown } {
+  const clean = text.replace(/\s+/g, " ").trim()
+  if (clean.length <= SUMMARY_MAX_CHARS) return { summary: clean }
+  let cut = clean.slice(0, SUMMARY_MAX_CHARS - 1)
+  const space = cut.lastIndexOf(" ")
+  if (space > SUMMARY_MAX_CHARS / 2) cut = cut.slice(0, space)
+  const last = cut.charCodeAt(cut.length - 1)
+  if (last >= 0xd800 && last <= 0xdbff) cut = cut.slice(0, -1)
+  return {
+    summary: `${cut.trimEnd()}…`,
+    // Format de document Atlassian, requis par l'API v3 pour la description.
+    description: { type: "doc", version: 1, content: [{ type: "paragraph", content: [{ type: "text", text: clean }] }] },
+  }
+}
+
+/** Détail d'erreur renvoyé par Jira (court, jamais d'identifiants : l'en-tête d'autorisation n'y figure pas). */
+async function jiraErrorDetail(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { errorMessages?: unknown; errors?: unknown }
+    const messages = [
+      ...(Array.isArray(body.errorMessages) ? body.errorMessages : []),
+      ...(body.errors && typeof body.errors === "object" ? Object.values(body.errors) : []),
+    ].filter((m): m is string => typeof m === "string")
+    return messages.join(" ; ").slice(0, 300)
+  } catch {
+    return ""
+  }
+}
+
 export async function createIssue(summary: string): Promise<JiraTicketSummary> {
   const creds = await requireCredentials()
   const projectKey = await getDefaultProject()
@@ -147,7 +195,7 @@ export async function createIssue(summary: string): Promise<JiraTicketSummary> {
     body: JSON.stringify({
       fields: {
         project: { key: projectKey },
-        summary,
+        ...splitSummary(summary),
         issuetype: { name: issueTypeName },
       },
     }),
@@ -159,7 +207,7 @@ export async function createIssue(summary: string): Promise<JiraTicketSummary> {
   return {
     id: created.id,
     key: created.key,
-    summary,
+    summary: splitSummary(summary).summary,
     status: "À faire",
     url: `https://${creds.domain}/browse/${created.key}`,
   }
@@ -170,10 +218,11 @@ export async function updateIssueSummary(issueKey: string, summary: string): Pro
   const creds = await requireCredentials()
   const response = await jiraFetch(creds, `/issue/${encodeURIComponent(issueKey)}`, {
     method: "PUT",
-    body: JSON.stringify({ fields: { summary } }),
+    body: JSON.stringify({ fields: splitSummary(summary) }),
   })
   if (!response.ok && response.status !== 204) {
-    throw new Error(`Impossible de mettre à jour le ticket "${issueKey}" (${response.status}).`)
+    const detail = await jiraErrorDetail(response)
+    throw new Error(`Impossible de mettre à jour le ticket "${issueKey}" (${response.status})${detail ? ` : ${detail}` : "."}`)
   }
 }
 
@@ -223,6 +272,91 @@ export async function searchOpenIssues(maxResults = 10): Promise<JiraTicketSumma
   }))
 }
 
+/** Ticket ouvert vu sous l'angle « à regarder » : ses dépendances ouvertes et sa dernière activité (digest de la vue journée). */
+export interface JiraAttentionIssue {
+  key: string
+  summary: string
+  url: string
+  /** Statut de catégorie « en cours » (ni à faire, ni terminé). */
+  inProgress: boolean
+  /** ISO 8601 — dernière activité Jira sur le ticket. */
+  updatedAt?: string
+  /** Clés des tickets non terminés que celui-ci bloque. */
+  blocks: string[]
+  /** Clés des tickets non terminés qu'il attend. */
+  blockedBy: string[]
+}
+
+interface JiraIssueLink {
+  type?: { name?: string; inward?: string }
+  outwardIssue?: JiraLinkedIssue
+  inwardIssue?: JiraLinkedIssue
+}
+
+interface JiraLinkedIssue {
+  key?: string
+  fields?: { status?: { statusCategory?: { key?: string } } }
+}
+
+const ATTENTION_MAX_ISSUES = 50
+
+/** Lien de type « Blocks » (nom standard de Jira), ou dont le libellé entrant parle de blocage sur un site renommé ou traduit. */
+function isBlockingLink(link: JiraIssueLink): boolean {
+  return link.type?.name?.toLowerCase() === "blocks" || /block|bloqu/i.test(link.type?.inward ?? "")
+}
+
+function openKey(issue: JiraLinkedIssue | undefined): string | undefined {
+  if (!issue?.key || issue.fields?.status?.statusCategory?.key === "done") return undefined
+  return issue.key
+}
+
+/**
+ * Les `ATTENTION_MAX_ISSUES` tickets ouverts les plus récemment mis à jour, avec leurs liens de blocage encore ouverts.
+ * Jira : sur le ticket X, `outwardIssue` Y d'un lien « Blocks » signifie « X bloque Y » ; `inwardIssue` Y, « X est bloqué par Y ».
+ */
+export async function searchAttentionIssues(): Promise<JiraAttentionIssue[]> {
+  const creds = await requireCredentials()
+  const jql = await openIssuesJql()
+  if (!jql) return []
+  const response = await jiraFetch(creds, "/search/jql", {
+    method: "POST",
+    body: JSON.stringify({
+      jql: `${jql} ORDER BY updated DESC`,
+      maxResults: ATTENTION_MAX_ISSUES,
+      fields: ["summary", "status", "issuelinks", "updated"],
+    }),
+  })
+  if (!response.ok) {
+    throw new Error(`Impossible de lister les tickets Jira (${response.status}).`)
+  }
+  const body = (await response.json()) as {
+    issues?: Array<{
+      key: string
+      fields?: {
+        summary?: string
+        status?: { statusCategory?: { key?: string } }
+        issuelinks?: JiraIssueLink[]
+        updated?: string
+      }
+    }>
+  }
+  return (body.issues ?? []).map((issue) => {
+    const links = (issue.fields?.issuelinks ?? []).filter(isBlockingLink)
+    const keys = (pick: (link: JiraIssueLink) => JiraLinkedIssue | undefined): string[] =>
+      links.map((link) => openKey(pick(link))).filter((key): key is string => key !== undefined)
+    const updated = issue.fields?.updated
+    return {
+      key: issue.key,
+      summary: issue.fields?.summary ?? "",
+      url: `https://${creds.domain}/browse/${issue.key}`,
+      inProgress: issue.fields?.status?.statusCategory?.key === "indeterminate",
+      ...(updated && !Number.isNaN(Date.parse(updated)) ? { updatedAt: new Date(updated).toISOString() } : {}),
+      blocks: keys((link) => link.outwardIssue),
+      blockedBy: keys((link) => link.inwardIssue),
+    }
+  })
+}
+
 /** Nombre exact de tickets ouverts (au-delà de ce que ramènerait une page de `searchOpenIssues`). */
 export async function countOpenIssues(): Promise<number> {
   const creds = await requireCredentials()
@@ -250,7 +384,8 @@ function toAdfDocument(text: string): unknown {
   }
 }
 
-export async function postComment(issueKey: string, body: string): Promise<{ id: string }> {
+/** Poste le commentaire sans rien inscrire au journal : l'appelant s'en charge (voir `postComment`, `linkSync.ts`). */
+export async function createComment(issueKey: string, body: string): Promise<{ id: string; url: string }> {
   const creds = await requireCredentials()
   const response = await jiraFetch(creds, `/issue/${encodeURIComponent(issueKey)}/comment`, {
     method: "POST",
@@ -260,9 +395,14 @@ export async function postComment(issueKey: string, body: string): Promise<{ id:
     throw new Error(`Impossible de poster le commentaire sur "${issueKey}" (${response.status}).`)
   }
   const comment = (await response.json()) as { id: string }
+  return { id: comment.id, url: `https://${creds.domain}/browse/${issueKey}` }
+}
+
+export async function postComment(issueKey: string, body: string): Promise<{ id: string }> {
+  const comment = await createComment(issueKey, body)
   await addEntry(`Commentaire posté sur ${issueKey}`, "with_user", {
     undo: { type: "jira-comment", issueKey, commentId: comment.id },
-    url: `https://${creds.domain}/browse/${issueKey}`,
+    url: comment.url,
   })
   return { id: comment.id }
 }
@@ -276,5 +416,82 @@ export async function deleteComment(issueKey: string, commentId: string): Promis
   )
   if (!response.ok && response.status !== 204) {
     throw new Error(`Impossible de supprimer le commentaire "${commentId}" sur "${issueKey}" (${response.status}).`)
+  }
+}
+
+/** Adresse du ticket sur le site Jira connecté. */
+export async function issueUrl(issueKey: string): Promise<string> {
+  const creds = await requireCredentials()
+  return `https://${creds.domain}/browse/${issueKey}`
+}
+
+/**
+ * Lien distant du ticket (panneau « Liens web » de Jira) vers une pull request, une maquette ou une release.
+ * `globalId` rend l'appel idempotent : Jira met à jour le lien existant au lieu d'en créer un second.
+ */
+export async function upsertRemoteLink(
+  issueKey: string,
+  link: { globalId: string; url: string; title: string },
+): Promise<{ id: string }> {
+  const creds = await requireCredentials()
+  const response = await jiraFetch(creds, `/issue/${encodeURIComponent(issueKey)}/remotelink`, {
+    method: "POST",
+    body: JSON.stringify({ globalId: link.globalId, object: { url: link.url, title: link.title.slice(0, 255) } }),
+  })
+  if (!response.ok) {
+    throw new Error(`Impossible de lier "${issueKey}" (${response.status}).`)
+  }
+  const created = (await response.json()) as { id: number | string }
+  return { id: String(created.id) }
+}
+
+export async function deleteRemoteLink(issueKey: string, linkId: string): Promise<void> {
+  const creds = await requireCredentials()
+  const response = await jiraFetch(
+    creds,
+    `/issue/${encodeURIComponent(issueKey)}/remotelink/${encodeURIComponent(linkId)}`,
+    { method: "DELETE" },
+  )
+  // 404 : le lien a déjà été retiré à la main dans Jira, l'effet voulu est obtenu.
+  if (!response.ok && response.status !== 204 && response.status !== 404) {
+    throw new Error(`Impossible de retirer le lien sur "${issueKey}" (${response.status}).`)
+  }
+}
+
+/** `undefined` : le ticket n'existe plus (supprimé dans Jira). `done` : il est déjà dans une colonne « terminé ». */
+export async function fetchIssueProgress(issueKey: string): Promise<{ done: boolean } | undefined> {
+  const creds = await requireCredentials()
+  const response = await jiraFetch(creds, `/issue/${encodeURIComponent(issueKey)}?fields=status`)
+  if (response.status === 404) return undefined
+  if (!response.ok) {
+    throw new Error(`Lecture du ticket "${issueKey}" impossible (${response.status}).`)
+  }
+  const issue = (await response.json()) as { fields?: { status?: { statusCategory?: { key?: string } } } }
+  return { done: issue.fields?.status?.statusCategory?.key === "done" }
+}
+
+/** Transition du flux du projet qui mène à une colonne « terminé » ; `undefined` si le flux n'en propose pas d'ici. */
+export async function findDoneTransition(issueKey: string): Promise<{ id: string; statusName: string } | undefined> {
+  const creds = await requireCredentials()
+  const response = await jiraFetch(creds, `/issue/${encodeURIComponent(issueKey)}/transitions`)
+  if (!response.ok) {
+    throw new Error(`Lecture des statuts possibles de "${issueKey}" impossible (${response.status}).`)
+  }
+  const body = (await response.json()) as {
+    transitions?: Array<{ id: string; to?: { name?: string; statusCategory?: { key?: string } } }>
+  }
+  const done = body.transitions?.find((transition) => transition.to?.statusCategory?.key === "done")
+  return done ? { id: done.id, statusName: (done.to?.name ?? "Terminé").slice(0, 60) } : undefined
+}
+
+export async function transitionIssue(issueKey: string, transitionId: string): Promise<void> {
+  const creds = await requireCredentials()
+  const response = await jiraFetch(creds, `/issue/${encodeURIComponent(issueKey)}/transitions`, {
+    method: "POST",
+    body: JSON.stringify({ transition: { id: transitionId } }),
+  })
+  if (!response.ok && response.status !== 204) {
+    const detail = await jiraErrorDetail(response)
+    throw new Error(`Impossible de changer le statut de "${issueKey}" (${response.status})${detail ? ` : ${detail}` : "."}`)
   }
 }

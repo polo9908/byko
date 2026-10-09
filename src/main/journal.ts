@@ -1,5 +1,5 @@
-import { app } from "electron"
-import { mkdir, readFile, writeFile } from "fs/promises"
+import { accountDataPath } from "./accountPaths"
+import { mkdir, readFile, rename, unlink, writeFile } from "fs/promises"
 import { dirname, join } from "path"
 import { randomUUID } from "crypto"
 import type { JournalEntry, JournalEntryMode, JournalUndo } from "../shared/journal"
@@ -14,7 +14,7 @@ import type { JournalEntry, JournalEntryMode, JournalUndo } from "../shared/jour
  */
 
 function journalFilePath(): string {
-  return join(app.getPath("userData"), "journal.json")
+  return accountDataPath("journal.json")
 }
 
 async function readEntries(): Promise<JournalEntry[]> {
@@ -29,8 +29,29 @@ async function readEntries(): Promise<JournalEntry[]> {
 
 async function writeEntries(entries: JournalEntry[]): Promise<void> {
   const file = journalFilePath()
-  await mkdir(dirname(file), { recursive: true })
-  await writeFile(file, JSON.stringify(entries))
+  const dir = dirname(file)
+  // Fichier temporaire puis `rename` : un arrêt en pleine écriture ne laisse jamais un JSON tronqué.
+  const tmp = join(dir, `journal.json.${randomUUID()}.tmp`)
+  await mkdir(dir, { recursive: true })
+  try {
+    await writeFile(tmp, JSON.stringify(entries))
+    await rename(tmp, file)
+  } catch (error) {
+    await unlink(tmp).catch(() => undefined)
+    throw error
+  }
+}
+
+/**
+ * Chaque lire-modifier-écrire passe par cette file : la relève des liens (linkSync.ts) écrit en arrière-plan, et deux
+ * ajouts simultanés ne doivent pas s'écraser (une entrée perdue, c'est une action qui n'est plus annulable).
+ */
+let queue: Promise<unknown> = Promise.resolve()
+
+function serialized<T>(run: () => Promise<T>): Promise<T> {
+  const result = queue.then(run, run)
+  queue = result.catch(() => undefined)
+  return result
 }
 
 export async function listToday(): Promise<JournalEntry[]> {
@@ -41,17 +62,48 @@ export async function listToday(): Promise<JournalEntry[]> {
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
 }
 
+/** Jour calendaire local précédent (pas « les dernières 24 h »), trié comme `listToday`. */
+export async function listYesterday(): Promise<JournalEntry[]> {
+  const entries: unknown[] = await readEntries()
+  // Le fichier est du JSON non vérifié : une entrée malformée ne doit pas faire
+  // échouer ask/suggest (TypeError dans le formatage ou le tri).
+  const valid = entries.filter(isUsableEntry)
+  const ignored = entries.length - valid.length
+  if (ignored > 0) {
+    console.warn(`[journal] ${ignored} entrée(s) malformée(s) ignorée(s) pour le contexte de la veille.`)
+  }
+  const yesterday = new Date()
+  yesterday.setDate(yesterday.getDate() - 1)
+  const yesterdayKey = yesterday.toDateString()
+  return valid
+    .filter((entry) => new Date(entry.createdAt).toDateString() === yesterdayKey)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+}
+
+function isUsableEntry(entry: unknown): entry is JournalEntry {
+  if (typeof entry !== "object" || entry === null) return false
+  const { title, createdAt } = entry as Record<string, unknown>
+  return (
+    typeof title === "string" &&
+    title.trim() !== "" &&
+    typeof createdAt === "string" &&
+    !Number.isNaN(Date.parse(createdAt))
+  )
+}
+
 export async function getEntry(id: string): Promise<JournalEntry | undefined> {
   const entries = await readEntries()
   return entries.find((entry) => entry.id === id)
 }
 
-export async function removeEntry(id: string): Promise<void> {
-  const entries = await readEntries()
-  await writeEntries(entries.filter((entry) => entry.id !== id))
+export function removeEntry(id: string): Promise<void> {
+  return serialized(async () => {
+    const entries = await readEntries()
+    await writeEntries(entries.filter((entry) => entry.id !== id))
+  })
 }
 
-export async function addEntry(
+export function addEntry(
   title: string,
   mode: JournalEntryMode,
   options: { undo?: JournalUndo; url?: string } = {},
@@ -64,8 +116,10 @@ export async function addEntry(
     undo: options.undo,
     url: options.url,
   }
-  const entries = await readEntries()
-  entries.push(entry)
-  await writeEntries(entries)
-  return entry
+  return serialized(async () => {
+    const entries = await readEntries()
+    entries.push(entry)
+    await writeEntries(entries)
+    return entry
+  })
 }

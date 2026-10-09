@@ -71,7 +71,7 @@ function JiraSetupWizard({ onConnected, onCancel }: JiraSetupWizardProps): React
             title: "Choisir le projet par défaut",
             body: (
               <>
-                C&apos;est ce projet que BYKO utilisera pour créer les tickets issus de vos réunions.
+                C&apos;est ce projet que Byko utilisera pour créer les tickets issus de vos réunions.
               </>
             ),
           },
@@ -113,7 +113,7 @@ function JiraSetupWizard({ onConnected, onCancel }: JiraSetupWizardProps): React
       title="Connecter Jira avec votre propre jeton"
       intro={
         <>
-          BYKO ne stocke aucun jeton partagé : vous créez le vôtre et il n&apos;est enregistré,
+          Byko ne stocke aucun jeton partagé : vous créez le vôtre et il n&apos;est enregistré,
           chiffré, que sur cet appareil.
         </>
       }
@@ -124,7 +124,7 @@ function JiraSetupWizard({ onConnected, onCancel }: JiraSetupWizardProps): React
           open: () => window.api.jira.openTokenPage(),
         },
         {
-          title: "Nommer le jeton « BCC »",
+          title: "Nommer le jeton « Byko »",
           body: <>Pour le retrouver facilement, puis validez par « Créer ».</>,
         },
         {

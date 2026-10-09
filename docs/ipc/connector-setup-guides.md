@@ -12,7 +12,7 @@ généralise ce pattern aux autres connecteurs de D1/D2 :
 - **Jira, IA, Figma** — connecteurs réellement branchés : l'assistant remplace le renvoi
   vers l'onboarding quand on clique « Connecter » sur une rangée déconnectée. On se connecte
   donc entièrement depuis Réglages.
-- **Slack, Teams, Outlook, GitHub** — annoncés mais sans backend (E3, D2) : un lien
+- **Slack, Teams, Outlook** — annoncés mais sans backend (E3, D2) : un lien
   « Voir comment faire » déplie un guide **informatif** (étapes + liens, sans champs ni
   bouton de connexion). Tant que l'intégration n'existe pas, rien ne pourrait être vérifié
   ni enregistré ; le bouton « Connecter » reste désactivé (« Bientôt disponible »).
@@ -20,11 +20,11 @@ généralise ce pattern aux autres connecteurs de D1/D2 :
 ## Types partagés (`src/shared/connectors.ts`)
 
 ```ts
-export type ConnectableConnectorId = "jira" | "ai" | "figma" | "calendar"
-export type UpcomingConnectorId = "slack" | "teams" | "outlook" | "github"
+export type ConnectableConnectorId = "jira" | "ai" | "figma" | "calendar" | "github"
+export type UpcomingConnectorId = "slack" | "teams" | "outlook"
 
 /** Pages d'aide ouvrables depuis les guides des connecteurs sans backend. */
-export type ConnectorSetupPage = "slackCreateApp" | "microsoftEntraApps" | "githubTokens"
+export type ConnectorSetupPage = "slackCreateApp" | "microsoftEntraApps"
 
 export const CONNECTOR_SETUP_PAGES: readonly ConnectorSetupPage[]
 ```
